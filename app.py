@@ -4,12 +4,12 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.4
-SAVE_FILE = "sendeplan_v2.4.json"
+# Dateipfad für Version 2.5
+SAVE_FILE = "sendeplan_v2.5.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.4 | Broadcast Direktion",
+    page_title="Master Control v2.5 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
@@ -136,7 +136,7 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v2.4: Programm-Direktion")
+st.title("📡 Master Control v2.5: Programm-Direktion")
 st.markdown(
     "**Kompakte Sende-Steuerung** — Startzeit in einem Feld, Netto/Werbung links"
     " und erweiterter Status-Parameter."
@@ -151,7 +151,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.4 (Kompakt)")
+  st.metric("Engine-Status", "v2.5 (Aktiv)")
 with c4:
   st.metric("Persistenz", "Live gesichert")
 
@@ -193,7 +193,6 @@ with tab_matrix:
     selected_idx = options_labels.index(selected_label)
     current_item = st.session_state.schedule[selected_idx]
 
-    # Aktuelle Startzeit für den kompakten Time-Picker extrahieren
     try:
       start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
       curr_h = int(start_str_parts[0])
@@ -201,11 +200,10 @@ with tab_matrix:
     except:
       curr_h, curr_m = 20, 15
 
-    # Kompakte Anordnung in 5 Spalten (Startzeit in ein Feld, Netto/Werbung links, Status rechts)
+    # Kompakte Anordnung in 5 Spalten
     col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1, 1, 1])
 
     with col_e1:
-      # Nur eine kompakte Dropdown-/Uhrzeit-Auswahl für die Startzeit
       new_time_val = st.time_input(
           "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
       )
@@ -236,10 +234,11 @@ with tab_matrix:
           "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
       )
     with col_e5:
-      st.markdown("<br>", unsafe_allow_html=True)  vielen Dank für den Abstand
+      st.markdown(
+          "<br>", unsafe_allow_html=True
+      )  # Korrigierter HTML-Abstand mit Kommentar
       save_clicked = st.button("💾 Speichern", use_container_width=True)
 
-    # Berechne neue Endzeit anhand der Gesamtlaufzeit
     total_len = new_net + new_ad
     start_dt = datetime.combine(datetime.today(), new_time_val)
     end_dt = start_dt + timedelta(minutes=total_len)
@@ -307,7 +306,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.4.csv",
+          "sendeplan_v2.5.csv",
           "text/csv",
       )
   else:
@@ -315,7 +314,7 @@ with tab_matrix:
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  with st.form("builder_v24"):
+  with st.form("builder_v25"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
