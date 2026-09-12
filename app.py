@@ -180,7 +180,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.7 (Format-Spezifische Netto-Sperre)")
+  st.metric("Engine-Status", "v2.7 (Automatische Format-Netto-Übernahme)")
 with c4:
   st.metric("Persistenz", "Aktiv (v2.7 JSON)")
 
@@ -212,10 +212,10 @@ with tab_matrix:
         "🛠️ Sendeplatz-Feintuner & Lösch-Menü öffnen", expanded=False
     ):
       st.markdown(
-          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit wird"
-          " format-abhängig (z.B. 24 Min. bei Hacks, 45 Min. bei Breaking Bad)"
-          " automatisch aus der Datenbank geladen und geschützt. Du kannst"
-          " flexibel die Werbezeit und die Startzeit anpassen."
+          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit (z.B. 24 Min. bei"
+          " Hacks, 45 Min. bei Breaking Bad) ist fest mit dem Format verknüpft"
+          " und wird automatisch im Hintergrund übernommen. Du kannst Startzeit"
+          " und Werbezeit flexibel anpassen."
       )
 
       options_labels = [
@@ -228,13 +228,14 @@ with tab_matrix:
       selected_idx = options_labels.index(selected_label)
       current_item = st.session_state.schedule[selected_idx]
 
-      # Format-Spezifische Netto-Laufzeit dynamisch aus der Datenbank auslesen!
+      # Automatische, unveränderbare Netto-Laufzeit aus der Format-DB im Hintergrund
       current_format = SERIES_DATABASE.get(current_item["Sendung"])
       fixed_net = (
           current_format["net"]
           if current_format
           else int(current_item["Netto"])
       )
+      new_net = fixed_net
 
       try:
         start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
@@ -243,24 +244,14 @@ with tab_matrix:
       except Exception:
         curr_h, curr_m = 20, 15
 
-      col_e1, col_e2, col_e3, col_e4, col_e5, col_e6 = st.columns(
-          [2, 1, 1, 1.5, 1, 1]
-      )
+      # Layout ohne Netto-Feld (5 angepasste Spalten)
+      col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1.5, 1, 1])
 
       with col_e1:
         new_time_val = st.time_input(
             "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
         )
       with col_e2:
-        # Netto ist an das gewählte Format gebunden und gesperrt!
-        st.number_input(
-            f"Netto ({current_item['Sendung']})",
-            value=fixed_net,
-            disabled=True,
-            key="edit_net_disabled",
-        )
-        new_net = fixed_net
-      with col_e3:
         new_ad = st.number_input(
             "Werbung (Min.)",
             min_value=0,
@@ -268,7 +259,7 @@ with tab_matrix:
             value=int(current_item["Werbung"]),
             key="edit_ad",
         )
-      with col_e4:
+      with col_e3:
         current_status = current_item.get("Status", "Erstausstrahlung")
         status_idx = (
             STATUS_OPTIONS.index(current_status)
@@ -278,12 +269,12 @@ with tab_matrix:
         new_status = st.selectbox(
             "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
         )
-      with col_e5:
+      with col_e4:
         st.markdown("<br>", unsafe_allow_html=True)
         save_clicked = st.button(
             "💾 Speichern", use_container_width=True, key="btn_save_slot"
         )
-      with col_e6:
+      with col_e5:
         st.markdown("<br>", unsafe_allow_html=True)
         delete_clicked = st.button(
             "🗑️ Löschen", use_container_width=True, key="btn_delete_slot"
