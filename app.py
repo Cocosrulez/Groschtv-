@@ -4,23 +4,51 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.7
-SAVE_FILE = "sendeplan_v2.7.json"
+# Dateipfad für Version 3.0
+SAVE_FILE = "sendeplan_v3.0.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.7 | Broadcast Direktion",
+    page_title="Master Control v3.0 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES TV-DESIGN ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V3.0) ---
 st.markdown(
     """
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 12px; border-radius: 8px; border-left: 4px solid #0066cc; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .main { background-color: #0e1117; }
     .block-container { padding-top: 2rem; }
+    
+    /* Edles Control-Room Dashboard Grid für Metriken */
+    .metric-grid {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 4px solid #0066cc;
+        padding: 16px 20px;
+        border-radius: 10px;
+        flex: 1;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .metric-label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+        font-weight: 600;
+    }
+    .metric-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #f8fafc;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -114,12 +142,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ ---
+# --- PERSISTENZ (Mit Migration von v2.7) ---
 def load_schedule():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v2.6.json" if os.path.exists("sendeplan_v2.6.json") else None)
+      else ("sendeplan_v2.7.json" if os.path.exists("sendeplan_v2.7.json") else None)
   )
   if target_file:
     try:
@@ -164,25 +192,40 @@ def save_schedule(data):
 if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
-# --- HEADER & METRIKEN ---
-st.title("📡 Master Control v2.7: Programm-Direktion")
+# --- HEADER & NEUE DESIGN-METRIKEN ---
+st.title("📡 Master Control v3.0: Programm-Direktion")
 st.markdown(
-    "**Erweiterte Broadcast-Engine (v2.7)** — Format-abhängige fixe"
-    " Netto-Laufzeiten, Werbe-Feintuner & Slot-Rasterkontrolle."
+    "**Broadcast-Engine (v3.0)** — Format-abhängige fixe Netto-Laufzeiten,"
+    " optimiertes Studio-Layout & Slot-Rasterkontrolle."
 )
 
 total_items = len(st.session_state.schedule)
 total_mins = sum([x.get("Gesamt", 0) for x in st.session_state.schedule])
 
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-  st.metric("Sendeplätze", total_items)
-with c2:
-  st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
-with c3:
-  st.metric("Engine-Status", "v2.7 (Automatische Format-Netto-Übernahme)")
-with c4:
-  st.metric("Persistenz", "Aktiv (v2.7 JSON)")
+# Saubere, optisch ansprechende Control-Room Metric Cards
+st.markdown(
+    f"""
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-label">Aktive Sendeplätze</div>
+            <div class="metric-value">{total_items}</div>
+        </div>
+        <div class="metric-card" style="border-left-color: #10b981;">
+            <div class="metric-label">Gesamtsendezeit</div>
+            <div class="metric-value">{total_mins} Min.</div>
+        </div>
+        <div class="metric-card" style="border-left-color: #8b5cf6;">
+            <div class="metric-label">Engine Core</div>
+            <div class="metric-value">v3.0 Studio</div>
+        </div>
+        <div class="metric-card" style="border-left-color: #f59e0b;">
+            <div class="metric-label">Persistenz</div>
+            <div class="metric-value">Aktiv (v3.0)</div>
+        </div>
+    </div>
+""",
+    unsafe_allow_html=True,
+)
 
 st.markdown("---")
 
@@ -212,10 +255,9 @@ with tab_matrix:
         "🛠️ Sendeplatz-Feintuner & Lösch-Menü öffnen", expanded=False
     ):
       st.markdown(
-          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit (z.B. 24 Min. bei"
-          " Hacks, 45 Min. bei Breaking Bad) ist fest mit dem Format verknüpft"
-          " und wird automatisch im Hintergrund übernommen. Du kannst Startzeit"
-          " und Werbezeit flexibel anpassen."
+          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit wird im"
+          " Hintergrund format-abhängig automatisch übernommen. Passe flexibel"
+          " Startzeit und Werbezeit an."
       )
 
       options_labels = [
@@ -228,7 +270,7 @@ with tab_matrix:
       selected_idx = options_labels.index(selected_label)
       current_item = st.session_state.schedule[selected_idx]
 
-      # Automatische, unveränderbare Netto-Laufzeit aus der Format-DB im Hintergrund
+      # Automatische Netto-Laufzeit aus der Format-DB im Hintergrund
       current_format = SERIES_DATABASE.get(current_item["Sendung"])
       fixed_net = (
           current_format["net"]
@@ -244,7 +286,7 @@ with tab_matrix:
       except Exception:
         curr_h, curr_m = 20, 15
 
-      # Layout ohne Netto-Feld (5 angepasste Spalten)
+      # Layout ohne Netto-Feld (5 aufgeräumte Spalten)
       col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1.5, 1, 1])
 
       with col_e1:
@@ -400,7 +442,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.7.csv",
+          "sendeplan_v3.0.csv",
           "text/csv",
       )
   else:
@@ -408,7 +450,7 @@ with tab_matrix:
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  with st.form("builder_v27"):
+  with st.form("builder_v30"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
