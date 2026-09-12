@@ -1,275 +1,120 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sendeplan & Programm-Manager</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: #fff;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        h1, h2 {
-            color: #2c3e50;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        select, input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        .row {
-            display: flex;
-            gap: 15px;
-        }
-        .col {
-            flex: 1;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            font-size: 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-            font-weight: 600;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .output-box {
-            margin-top: 25px;
-            background: #e9ecef;
-            padding: 15px;
-            border-radius: 6px;
-            white-space: pre-wrap;
-            font-family: monospace;
-            font-size: 13px;
-        }
-        .error {
-            color: #d9534f;
-            font-weight: bold;
-            background: #fde8e8;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-        .success {
-            color: #28a745;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
+import streamlit as st
 
-<div class="container">
-    <h1>Sendeplan & Programm-Manager</h1>
-    <p>Plane deine Serien mit automatischer Episoden-Prüfung und festen Sende-Slots (Daytime & Primetime).</p>
+# Seitengestaltung
+st.set_page_config(page_title="Sendeplan & Programm-Manager", layout="centered")
 
-    <div class="row">
-        <div class="col">
-            <div class="form-group">
-                <label for="serieSelect">Serie auswählen:</label>
-                <select id="serieSelect" onchange="updateMaxEpisodes()">
-                    <option value="Hacks">Hacks</option>
-                    <option value="Grey's Anatomy">Grey's Anatomy</option>
-                    <option value="Curb Your Enthusiasm">Curb Your Enthusiasm</option>
-                </select>
-            </div>
-        </div>
-        <div class="col">
-            <div class="form-group">
-                <label for="slotType">Sende-Slot:</label>
-                <select id="slotType" onchange="adjustSlotTime()">
-                    <option value="daytime">Daytime (Mo–Fr, standardmäßig 16:00 Uhr)</option>
-                    <option value="primetime">Primetime (ab 20:00 Uhr)</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col">
-            <div class="form-group">
-                <label for="seasonInput">Staffel:</label>
-                <input type="number" id="seasonInput" value="1" min="1" onchange="updateMaxEpisodes()">
-            </div>
-        </div>
-        <div class="col">
-            <div class="form-group">
-                <label for="episodeInput">Episode:</label>
-                <input type="number" id="episodeInput" value="1" min="1">
-                <small id="maxEpInfo" style="color: #666; font-size: 12px;"></small>
-            </div>
-        </div>
-        <div class="col">
-            <div class="form-group">
-                <label for="startTimeInput">Startzeit:</label>
-                <input type="time" id="startTimeInput" value="16:00">
-            </div>
-        </div>
-    </div>
-
-    <button onclick="addToSchedule()">Sendung einfügen (Mo–Fr Template)</button>
-
-    <div id="messageArea"></div>
-
-    <h2>Aktueller Sendeplan</h2>
-    <div id="scheduleOutput" class="output-box">Noch keine Sendungen eingetragen.</div>
-</div>
-
-<script>
-    // Integrierte Datenbank mit maximalen Staffeln und Episoden
-    const serieDatabase = {
-        "Hacks": {
-            seasons: {
-                1: { totalEpisodes: 10, duration: 30 },
-                2: { totalEpisodes: 8, duration: 30 },
-                3: { totalEpisodes: 9, duration: 30 }
-            }
-        },
-        "Grey's Anatomy": {
-            seasons: {
-                1: { totalEpisodes: 9, duration: 43 },
-                2: { totalEpisodes: 27, duration: 43 }
-            }
-        },
-        "Curb Your Enthusiasm": {
-            seasons: {
-                1: { totalEpisodes: 10, duration: 30 },
-                2: { totalEpisodes: 10, duration: 30 }
-            }
+# Integrierte Datenbank mit Serien, Staffeln, max. Episoden und Laufzeiten
+SERIE_DATABASE = {
+    "Hacks": {
+        "seasons": {
+            1: {"totalEpisodes": 10, "duration": 30},
+            2: {"totalEpisodes": 8, "duration": 30},
+            3: {"totalEpisodes": 9, "duration": 30}
         }
-    };
-
-    let weeklySchedule = [];
-
-    function updateMaxEpisodes() {
-        const serieName = document.getElementById("serieSelect").value;
-        const seasonNum = parseInt(document.getElementById("seasonInput").value, 10);
-        const serie = serieDatabase[serieName];
-        const infoElem = document.getElementById("maxEpInfo");
-
-        if (serie && serie.seasons[seasonNum]) {
-            const maxEp = serie.seasons[seasonNum].totalEpisodes;
-            infoElem.innerText = `Max. Episoden in Staffel ${seasonNum}: ${maxEp}`;
-            document.getElementById("episodeInput").max = maxEp;
-        } else {
-            infoElem.innerText = "Staffel existiert nicht!";
-            document.getElementById("episodeInput").max = 99;
+    },
+    "Grey's Anatomy": {
+        "seasons": {
+            1: {"totalEpisodes": 9, "duration": 43},
+            2: {"totalEpisodes": 27, "duration": 43}
+        }
+    },
+    "Curb Your Enthusiasm": {
+        "seasons": {
+            1: {"totalEpisodes": 10, "duration": 30},
+            2: {"totalEpisodes": 10, "duration": 30}
         }
     }
+}
 
-    function adjustSlotTime() {
-        const slotType = document.getElementById("slotType").value;
-        const timeInput = document.getElementById("startTimeInput");
-        if (slotType === "daytime") {
-            timeInput.value = "16:00";
-        } else {
-            timeInput.value = "20:15";
-        }
-    }
+st.title("📺 Sendeplan & Programm-Manager")
+st.write("Plane deine Serien mit automatischer Episoden-Prüfung und festen Sende-Slots (Daytime & Primetime).")
 
-    function calculateEndTime(startTime, durationMinutes) {
-        const [hours, minutes] = startTime.split(":").map(Number);
-        const totalMinutes = hours * 60 + minutes + durationMinutes;
-        const endHours = Math.floor(totalMinutes / 60) % 24;
-        const endMinutes = totalMinutes % 60;
-        return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
-    }
+# Session State initialisieren, damit der Sendeplan beim Klicken erhalten bleibt
+if "schedule" not in st.session_state:
+    st.session_state.schedule = []
 
-    function addToSchedule() {
-        const messageArea = document.getElementById("messageArea");
-        messageArea.innerHTML = "";
+# Layout der Eingabefelder
+col1, col2 = st.columns(2)
 
-        const serieName = document.getElementById("serieSelect").value;
-        const seasonNum = parseInt(document.getElementById("seasonInput").value, 10);
-        const episodeNum = parseInt(document.getElementById("episodeInput").value, 10);
-        const startTime = document.getElementById("startTimeInput").value;
-        const slotType = document.getElementById("slotType").value;
+with col1:
+    serie_name = st.selectbox("Serie auswählen:", list(SERIE_DATABASE.keys()))
 
-        // --- VALIDIERUNG (Dein Kernwunsch) ---
-        const serie = serieDatabase[serieName];
-        if (!serie || !serie.seasons[seasonNum]) {
-            messageArea.innerHTML = `<div class="error">Fehler: Staffel ${seasonNum} für "${serieName}" existiert nicht!</div>`;
-            return;
-        }
+with col2:
+    slot_type = st.selectbox(
+        "Sende-Slot:", 
+        ["Daytime (bis 20:00 Uhr)", "Primetime (ab 20:00 Uhr)"]
+    )
 
-        const seasonData = serie.seasons[seasonNum];
-        if (episodeNum < 1 || episodeNum > seasonData.totalEpisodes) {
-            messageArea.innerHTML = `<div class="error">Fehler: Episode ${episodeNum} ist ungültig! Staffel ${seasonNum} von "${serieName}" hat maximal ${seasonData.totalEpisodes} Episoden.</div>`;
-            return;
-        }
+# Dynamische Startzeit je nach Slot anpassen
+default_time = "16:00" if "Daytime" in slot_type else "20:15"
 
-        const duration = seasonData.duration;
-        const endTime = calculateEndTime(startTime, duration);
-        const slotLabel = slotType === "daytime" ? "Daytime (bis 20:00)" : "Primetime (ab 20:00)";
+col_s, col_e, col_t = st.columns(3)
 
-        // --- MO-FR TEMPLATE GENERIERUNG ---
-        const days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"];
-        let currentEp = episodeNum;
+with col_s:
+    season_num = st.number_input("Staffel:", min_value=1, value=1, step=1)
 
-        days.forEach(day => {
-            // Prüfen ob die fortlaufende Episode für den Wochentag noch im Rahmen ist
-            if (currentEp <= seasonData.totalEpisodes) {
-                weeklySchedule.push({
-                    day: day,
-                    slot: slotLabel,
-                    serie: serieName,
-                    season: seasonNum,
-                    episode: currentEp,
-                    time: `${startTime} - ${endTime}`
-                });
-                currentEp++;
-            }
-        });
+# Maximale Episoden für die ausgewählte Staffel ermitteln
+serie_data = SERIE_DATABASE.get(serie_name, {})
+seasons_data = serie_data.get("seasons", {})
+current_season_data = seasons_data.get(season_num)
 
-        messageArea.innerHTML = `<div class="success">Erfolgreich als Mo-Fr Template eingetragen!</div>`;
-        renderSchedule();
-    }
+max_eps = current_season_data["totalEpisodes"] if current_season_data else 99
 
-    function renderSchedule() {
-        const output = document.getElementById("scheduleOutput");
-        if (weeklySchedule.length === 0) {
-            output.innerText = "Noch keine Sendungen eingetragen.";
-            return;
-        }
+with col_e:
+    episode_num = st.number_input(f"Episode (Max: {max_eps}):", min_value=1, value=1, step=1)
 
-        let text = "";
-        weeklySchedule.forEach(item => {
-            text += `[${item.day}] ${item.slot} | ${item.time} Uhr -> ${item.serie} (S${item.season}E${item.episode})\n`;
-        });
-        output.innerText = text;
-    }
+with col_t:
+    start_time_str = st.text_input("Startzeit (HH:MM):", value=default_time)
 
-    // Initialisierung beim Laden
-    updateMaxEpisodes();
-</script>
+# Button zum Eintragen
+if st.button("Sendung einfügen (Mo–Fr Template)"):
+    # 1. Validierung: Existiert die Staffel?
+    if season_num not in seasons_data:
+        st.error(f"Fehler: Staffel {season_num} für '{serie_name}' existiert nicht!")
+    # 2. Validierung: Existiert die Episode?
+    elif episode_num > max_eps:
+        st.error(f"Fehler: Episode {episode_num} ist ungültig! Staffel {season_num} von '{serie_name}' hat maximal {max_eps} Episoden.")
+    else:
+        # Endzeit berechnen
+        duration = current_season_data["duration"]
+        try:
+            h, m = map(int, start_time_str.split(":"))
+            total_minutes = h * 60 + m + duration
+            end_h = (total_minutes // 60) % 24
+            end_m = total_minutes % 60
+            end_time_str = f"{end_h:02d}:{end_m:02d}"
+        except:
+            end_time_str = "20:00"
 
-</body>
-</html>
+        # Mo-Fr Template automatisch generieren
+        days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+        current_ep = episode_num
+        slot_label = "Daytime" if "Daytime" in slot_type else "Primetime"
+
+        for day in days:
+            if current_ep <= max_eps:
+                st.session_state.schedule.append({
+                    "day": day,
+                    "slot": slot_label,
+                    "serie": serie_name,
+                    "season": season_num,
+                    "episode": current_ep,
+                    "time": f"{start_time_str} - {end_time_str}"
+                })
+                current_ep += 1
+
+        st.success("Erfolgreich als Mo-Fr Template eingetragen!")
+
+# Sendeplan anzeigen
+st.divider()
+st.subheader("📋 Aktueller Sendeplan")
+
+if len(st.session_state.schedule) == 0:
+    st.info("Noch keine Sendungen eingetragen.")
+else:
+    for item in st.session_state.schedule:
+        st.write(f"**[{item['day']}]** ({item['slot']}) | {item['time']} Uhr ➔ **{item['serie']}** (Staffel {item['season']}, Episode {item['episode']})")
+    
+    if st.button("Sendeplan zurücksetzen"):
+        st.session_state.schedule = []
+        st.rerun()
