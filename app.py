@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 3.0
-SAVE_FILE = "sendeplan_v3.0.json"
-FORMATS_FILE = "formats_v3.0.json"
+# Dateipfad für Version 4.0
+SAVE_FILE = "sendeplan_v4.0.json"
+FORMATS_FILE = "formats_v4.0.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v3.0 | Broadcast Direktion",
+    page_title="Master Control v4.0 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V3.0) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.0) ---
 st.markdown(
     """
     <style>
@@ -55,7 +55,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- MASTER FORMAT-DATENBANK (Standard-Laufzeiten je Format) ---
+# --- MASTER FORMAT-DATENBANK ---
 DEFAULT_SERIES_DATABASE = {
     "Tagesschau / News": {
         "genre": "Nachrichten",
@@ -111,6 +111,14 @@ DEFAULT_SERIES_DATABASE = {
         "net": 21,
         "ad": 9,
     },
+}
+
+# --- SMART FILLER DATENBANK (Kurzformate zum Lückenfüllen) ---
+FILLER_DATABASE = {
+    "Sender-Trailer": {"net": 1, "ad": 0, "genre": "Promo"},
+    "Programm-Vorschau": {"net": 2, "ad": 0, "genre": "Promo"},
+    "Musik-Intermezzo": {"net": 3, "ad": 0, "genre": "Musik"},
+    "Kurz-Doku / Teaser": {"net": 5, "ad": 0, "genre": "Doku"},
 }
 
 WEEKDAYS = [
@@ -180,7 +188,7 @@ def load_schedule():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v2.7.json" if os.path.exists("sendeplan_v2.7.json") else None)
+      else ("sendeplan_v3.0.json" if os.path.exists("sendeplan_v3.0.json") else None)
   )
   if target_file:
     try:
@@ -226,10 +234,10 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v3.0: Programm-Direktion")
+st.title("📡 Master Control v4.0: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v3.0)** — Intelligente Episoden-Sperre,"
-    " tagesbasierte Kollisionsprüfung & Live-Reaktivität."
+    "**Broadcast-Engine (v4.0)** — Smart Filler Lücken-Generator,"
+    " Episoden-Sperre & Kollisionsprüfung."
 )
 
 total_items = len(st.session_state.schedule)
@@ -248,7 +256,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v3.0 Studio</div>
+            <div class="metric-value">v4.0 Smart Filler</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -394,11 +402,12 @@ with tab_matrix:
     st.subheader("🔍 Live-Logik & Format-Datenbank-Prüfung")
     errors_found = []
     slot_warnings = []
+    gap_actions = []  # Speichert Lücken für den Smart-Filler-Button
 
     # 1. Format- und Einzel-Slot Checks
     for idx, row in enumerate(st.session_state.schedule):
       show_name = row["Sendung"]
-      format_spec = st.session_state.series_db.get(show_name)
+      format_spec = st.session_state.series_db.get(show_name) or FILLER_DATABASE.get(show_name)
 
       try:
         if not format_spec:
@@ -433,7 +442,6 @@ with tab_matrix:
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
           )
 
-        # Rasterprüfung (nur wenn nicht als OK markiert)
         is_exact, info_text = get_slot_grid_info(expected_total)
         warn_key = f"raster_{idx}"
         if not is_exact and warn_key not in st.session_state.acknowledged_warnings:
@@ -447,7 +455,7 @@ with tab_matrix:
             f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
-    # 2. Tagesbasierte chronologische Prüfung (Überschneidungen / Lücken zwischen Slots)
+    # 2. Tagesbasierte chronologische Prüfung & Smart Filler Erkennung
     for day in WEEKDAYS:
       day_slots = [
           (i, row)
@@ -479,7 +487,6 @@ with tab_matrix:
             if c_end > 24 * 60:
               c_end -= 24 * 60
 
-            # Überschneidungs-Check (Kollision)
             if n_start < c_end:
               errors_found.append(
                   f"**Kollisions-Fehler am {day}:** Sendeplatz #{idx_curr+1} ('{curr_row['Sendung']}', endet {c_end_str}) überschneidet sich direkt mit Sendeplatz #{idx_next+1} ('{next_row['Sendung']}', beginnt {n_start_str})!"
@@ -495,6 +502,13 @@ with tab_matrix:
                     gap_key,
                     f"**Lücke am {day}:** Zwischen Sendeplatz #{idx_curr+1} ('{curr_row['Sendung']}') und #{idx_next+1} ('{next_row['Sendung']}') liegt eine Lücke von **{gap} Minuten** ({c_end_str} bis {n_start_str}).",
                 ))
+                # Für den Smart Filler merken: Wochentag, Startzeit, Lütkengröße
+                gap_actions.append({
+                    "day": day,
+                    "start_time": c_end_str,
+                    "gap_mins": gap,
+                    "key": gap_key
+                })
           except Exception:
             pass
 
@@ -508,15 +522,50 @@ with tab_matrix:
           " zeitlich sauber eingetaktet."
       )
 
-    # Rendering Warnungen mit Bestätigungs-Button ("Als OK markieren")
+    # Rendering Warnungen mit Bestätigungs-Button oder Smart-Filler-Aktion
     if slot_warnings:
       st.markdown("---")
-      st.markdown("### ⚠️ Hinweise & Raster-Abweichungen")
+      st.markdown("### ⚠️ Hinweise, Lücken & Raster-Abweichungen")
       for w_key, warn_text in slot_warnings:
-        col_w1, col_w2 = st.columns([4, 1])
+        col_w1, col_w2, col_w3 = st.columns([3, 1, 1])
         with col_w1:
           st.warning(warn_text)
+        
+        # Prüfen, ob es sich um eine Lücke handelt, für die wir einen Smart Filler anbieten können
+        matching_gap = next((g for g in gap_actions if g["key"] == w_key), None)
+        
         with col_w2:
+          if matching_gap:
+            # Passenden Filler anhand der Minuten aussuchen
+            available_fillers = [f for f, data in FILLER_DATABASE.items() if data["net"] <= matching_gap["gap_mins"]]
+            if available_fillers:
+              chosen_filler = st.selectbox("Filler wählen", available_fillers, key=f"sel_filler_{w_key}")
+              if st.button("✨ Lücke füllen", key=f"fill_{w_key}"):
+                f_data = FILLER_DATABASE[chosen_filler]
+                # Neuen Filler-Slot einfügen
+                sh, sm = map(int, matching_gap["start_time"].split(":"))
+                start_dt = datetime.combine(datetime.today(), time(sh, sm))
+                end_dt = start_dt + timedelta(minutes=f_data["net"] + f_data["ad"])
+                
+                new_slot = {
+                    "Wochentag": matching_gap["day"],
+                    "Uhrzeit": f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}",
+                    "Sendung": chosen_filler,
+                    "Staffel": 2026,
+                    "Ep.": 1,
+                    "Netto": f_data["net"],
+                    "Werbung": f_data["ad"],
+                    "Gesamt": f_data["net"] + f_data["ad"],
+                    "Status": "Erstausstrahlung"
+                }
+                st.session_state.schedule.append(new_slot)
+                save_schedule(st.session_state.schedule)
+                st.success(f"Lücke mit '{chosen_filler}' geschlossen!")
+                st.rerun()
+            else:
+              st.caption("Kein kleiner Filler verfügbar")
+        
+        with col_w3:
           if st.button("Als OK markieren", key=f"ack_{w_key}"):
             st.session_state.acknowledged_warnings.add(w_key)
             st.rerun()
@@ -536,7 +585,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v3.0.csv",
+          "sendeplan_v4.0.csv",
           "text/csv",
       )
   else:
@@ -545,47 +594,52 @@ with tab_matrix:
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
 
-  # Ohne st.form, damit sich die Felder in Echtzeit reaktiv aktualisieren!
   col_b1, col_b2 = st.columns(2)
   with col_b1:
     day_selection = st.selectbox("Wochentag / Block", DAY_OPTIONS, key="builder_day")
     show = st.selectbox(
-        "Format / Sendung", list(st.session_state.series_db.keys()), key="builder_show"
+        "Format / Sendung", list(st.session_state.series_db.keys()) + list(FILLER_DATABASE.keys()), key="builder_show"
     )
-    format_info = st.session_state.series_db[show]
-    season = st.selectbox("Staffel", list(format_info["seasons"].keys()), key="builder_season")
+    
+    # Prüfen ob reguläres Format oder Filler
+    if show in st.session_state.series_db:
+      format_info = st.session_state.series_db[show]
+      is_filler = False
+    else:
+      format_info = FILLER_DATABASE[show]
+      is_filler = True
 
-    # Intelligente Ermittlung der nächsten freien Episodennummer für das GEWÄHLTE Format
-    existing_eps = [
-        x["Ep."]
-        for x in st.session_state.schedule
-        if x["Sendung"] == show and x["Staffel"] == season
-    ]
-    next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
+    if not is_filler:
+      season = st.selectbox("Staffel", list(format_info["seasons"].keys()), key="builder_season")
+      existing_eps = [
+          x["Ep."]
+          for x in st.session_state.schedule
+          if x["Sendung"] == show and x["Staffel"] == season
+      ]
+      next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
 
-    episode = st.number_input(
-        "Start-Episodennummer (Automatisch nächste freie Folge)",
-        min_value=1,
-        max_value=10000,
-        value=next_ep_suggestion,
-        step=1,
-        key="builder_ep"
-    )
-
-    if existing_eps:
-      st.info(
-          f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden"
-          f" {sorted(list(set(existing_eps)))}"
+      episode = st.number_input(
+          "Start-Episodennummer (Automatisch nächste freie Folge)",
+          min_value=1,
+          max_value=10000,
+          value=next_ep_suggestion,
+          step=1,
+          key="builder_ep"
       )
+      if existing_eps:
+        st.info(f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden {sorted(list(set(existing_eps)))}")
+    else:
+      season = 2026
+      episode = 1
+      st.info("💡 Smart Filler Format (keine Episodennummer nötig).")
+
   with col_b2:
     start_t = st.time_input("Startzeit", time(20, 15), key="builder_time")
     count = st.selectbox("Anzahl Folgen nacheinander", list(range(1, 6)), key="builder_count")
     plan_status = st.selectbox("Status", STATUS_OPTIONS, key="builder_status")
 
-    # Checkbox zum Entsperren / Erlauben von Doppelbelegungen
     override_lock = st.checkbox(
-        "🔄 Bereits vergebene Episoden für Neuzugänge freischalten"
-        " (Überschreiben erlauben)",
+        "🔄 Bereits vergebene Episoden für Neuzugänge freischalten (Überschreiben erlauben)",
         value=False,
         key="builder_override"
     )
@@ -594,8 +648,8 @@ with tab_builder:
     ad_time = format_info["ad"]
     total_block = net_time + ad_time
     st.markdown(
-        f"💡 **Voreinstellung aus Format-DB für '{show}':** {net_time} Min."
-        f" Netto (fix) + {ad_time} Min. Werbung = **{total_block} Min."
+        f"💡 **Voreinstellung für '{show}':** {net_time} Min."
+        f" Netto + {ad_time} Min. Werbung = **{total_block} Min."
         f" gesamt**."
     )
 
@@ -612,8 +666,7 @@ with tab_builder:
     conflict_found = False
     conflicting_eps = []
 
-    # Vorab-Prüfung auf bereits vergebene Episoden (falls nicht überschrieben)
-    if not override_lock:
+    if not is_filler and not override_lock:
       check_ep = current_ep
       for _ in target_days:
         for _ in range(count):
@@ -626,8 +679,7 @@ with tab_builder:
       st.error(
           f"🚫 **Episoden-Sperre aktiv:** Die Episoden {list(set(conflicting_eps))}"
           f" für '{show}' (Staffel {season}) sind bereits im Sendeplan"
-          " vorhanden! Aktiviere die Checkbox 'Überschreiben erlauben', um"
-          " sie dennoch hinzuzufügen."
+          " vorhanden! Aktiviere die Checkbox 'Überschreiben erlauben'."
       )
     else:
       for day_name in target_days:
@@ -642,13 +694,14 @@ with tab_builder:
               "Uhrzeit": f"{start_str} - {end_str}",
               "Sendung": show,
               "Staffel": season,
-              "Ep.": current_ep,
+              "Ep.": current_ep if not is_filler else 1,
               "Netto": net_time,
               "Werbung": ad_time,
               "Gesamt": total_block,
               "Status": plan_status,
           })
-          current_ep += 1
+          if not is_filler:
+            current_ep += 1
 
       st.session_state.schedule.extend(added_entries)
       save_schedule(st.session_state.schedule)
