@@ -4,8 +4,9 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 3.0
+# Dateipfade für Version 3.0
 SAVE_FILE = "sendeplan_v3.0.json"
+FORMATS_FILE = "formats_v3.0.json"
 
 # Seitenkonfiguration
 st.set_page_config(
@@ -54,8 +55,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- MASTER FORMAT-DATENBANK (Individuelle Standard-Laufzeiten je Format) ---
-SERIES_DATABASE = {
+# --- MASTER FORMAT-DATENBANK (Standard-Laufzeiten je Format) ---
+DEFAULT_SERIES_DATABASE = {
     "Hacks": {
         "genre": "Comedy",
         "seasons": {1: 10, 2: 8, 3: 9},
@@ -119,9 +120,31 @@ DAY_OPTIONS = WEEKDAYS + ["Montag bis Freitag (Mo-Fr)"]
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
+# --- FORMAT-PERSISTENZ ---
+def load_formats():
+  if os.path.exists(FORMATS_FILE):
+    try:
+      with open(FORMATS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      pass
+  return DEFAULT_SERIES_DATABASE
+
+
+def save_formats(db):
+  try:
+    with open(FORMATS_FILE, "w", encoding="utf-8") as f:
+      json.dump(db, f, ensure_ascii=False, indent=4)
+  except Exception as e:
+    st.error(f"Fehler beim Speichern der Formate: {e}")
+
+
+if "series_db" not in st.session_state:
+  st.session_state.series_db = load_formats()
+
+
 # --- HILFSFUNKTION FÜR SLOT-HINWEISE ---
 def get_slot_grid_info(total_mins):
-  """Ermittelt, ob und wie weit ein Gesamt-Block von einem Standard-Halbstunden-Raster abweicht."""
   target_slot = round(total_mins / 30) * 30
   if target_slot == 0:
     target_slot = 30
@@ -143,7 +166,7 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Mit Migration von v2.7) ---
+# --- PERSISTENZ (Sendeplan) ---
 def load_schedule():
   target_file = (
       SAVE_FILE
@@ -193,17 +216,16 @@ def save_schedule(data):
 if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
-# --- HEADER & NEUE DESIGN-METRIKEN ---
+# --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.0: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v3.0)** — Format-abhängige fixe Netto-Laufzeiten,"
-    " optimiertes Studio-Layout & Slot-Rasterkontrolle."
+    "**Broadcast-Engine (v3.0)** — Dynamische Format-Verwaltung, fixe"
+    " Netto-Laufzeiten & Mo-Fr Block-Planung."
 )
 
 total_items = len(st.session_state.schedule)
 total_mins = sum([x.get("Gesamt", 0) for x in st.session_state.schedule])
 
-# Saubere, optisch ansprechende Control-Room Metric Cards
 st.markdown(
     f"""
     <div class="metric-grid">
@@ -220,8 +242,8 @@ st.markdown(
             <div class="metric-value">v3.0 Studio</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
-            <div class="metric-label">Persistenz</div>
-            <div class="metric-value">Aktiv (v3.0)</div>
+            <div class="metric-label">Verfügbare Formate</div>
+            <div class="metric-value">{len(st.session_state.series_db)}</div>
         </div>
     </div>
 """,
@@ -234,7 +256,7 @@ st.markdown("---")
 tab_matrix, tab_builder, tab_db = st.tabs([
     "📅 Wochen-Matrix & Editor",
     "⚡ Schnell-Planer (Neuer Slot)",
-    "📚 Format-Referenz",
+    "📚 Format-Referenz & Neue Sendungen",
 ])
 
 with tab_matrix:
@@ -271,8 +293,7 @@ with tab_matrix:
       selected_idx = options_labels.index(selected_label)
       current_item = st.session_state.schedule[selected_idx]
 
-      # Automatische Netto-Laufzeit aus der Format-DB im Hintergrund
-      current_format = SERIES_DATABASE.get(current_item["Sendung"])
+      current_format = st.session_state.series_db.get(current_item["Sendung"])
       fixed_net = (
           current_format["net"]
           if current_format
@@ -287,7 +308,6 @@ with tab_matrix:
       except Exception:
         curr_h, curr_m = 20, 15
 
-      # Layout ohne Netto-Feld (5 aufgeräumte Spalten)
       col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1.5, 1, 1])
 
       with col_e1:
@@ -330,7 +350,6 @@ with tab_matrix:
           f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
       )
 
-      # --- LIVE-FEEDBACK FÜR WERBUNG & SLOT-ABWEICHUNG ---
       is_exact_slot, slot_msg = get_slot_grid_info(total_len)
       if is_exact_slot:
         st.info(
@@ -369,10 +388,9 @@ with tab_matrix:
 
     for idx, row in enumerate(st.session_state.schedule):
       show_name = row["Sendung"]
-      format_spec = SERIES_DATABASE.get(show_name)
+      format_spec = st.session_state.series_db.get(show_name)
 
       try:
-        # 1. Strikter Check: Stimmt die Netto-Dauer EXAKT mit dem jeweiligen Format überein?
         if format_spec:
           expected_net = format_spec["net"]
           actual_net = int(row["Netto"])
@@ -382,7 +400,6 @@ with tab_matrix:
                 f"Eingetragene Dauer: **{actual_net} Min.** | Das Format '{show_name}' schreibt in der DB exakt **{expected_net} Min.** vor!"
             )
 
-        # 2. Check: Reines Zeitfenster (Start- bis Endzeit)
         t_parts = row["Uhrzeit"].split(" - ")
         s_parts = list(map(int, t_parts[0].split(":")))
         e_parts = list(map(int, t_parts[1].split(":")))
@@ -401,7 +418,6 @@ with tab_matrix:
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
           )
 
-        # 3. Check: Slot-Rasterhinweis bei variierender Werbung
         is_exact, info_text = get_slot_grid_info(expected_total)
         if not is_exact:
           slot_warnings.append(
@@ -413,7 +429,6 @@ with tab_matrix:
             f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
-    # Rendering Fehler
     if errors_found:
       for err in errors_found:
         st.error(f"❌ {err}")
@@ -423,7 +438,6 @@ with tab_matrix:
           " format-spezifischen Datenbank-Vorgaben."
       )
 
-    # Rendering Warnungen / Slot-Infos
     if slot_warnings:
       with st.container():
         for warn in slot_warnings:
@@ -455,8 +469,8 @@ with tab_builder:
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day_selection = st.selectbox("Wochentag / Block", DAY_OPTIONS)
-      show = st.selectbox("Format / Sendung", list(SERIES_DATABASE.keys()))
-      format_info = SERIES_DATABASE[show]
+      show = st.selectbox("Format / Sendung", list(st.session_state.series_db.keys()))
+      format_info = st.session_state.series_db[show]
       season = st.selectbox("Staffel", list(format_info["seasons"].keys()))
       episode = st.selectbox(
           "Start-Episodennummer",
@@ -480,7 +494,6 @@ with tab_builder:
     if submitted:
       added_entries = []
 
-      # Unterscheidung ob einzelner Tag oder Mo-Fr Block
       if day_selection == "Montag bis Freitag (Mo-Fr)":
         target_days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
       else:
@@ -493,7 +506,6 @@ with tab_builder:
           current_dt += timedelta(minutes=total_block)
           end_str = current_dt.strftime("%H:%M")
 
-          # Episodennummerierung bei Mo-Fr über die Wochentage hinweg fortlaufend anpassen
           ep_num = (
               episode
               + i
@@ -522,7 +534,8 @@ with tab_builder:
       st.rerun()
 
 with tab_db:
-  st.subheader("Verifizierte Formate & Standard-Laufzeiten")
+  st.subheader("📚 Verifizierte Formate & Standard-Laufzeiten")
+  
   db_rows = [
       {
           "Format": k,
@@ -531,6 +544,36 @@ with tab_db:
           "Werbung (Min.)": v["ad"],
           "Gesamt (Min.)": v["net"] + v["ad"],
       }
-      for k, v in SERIES_DATABASE.items()
+      for k, v in st.session_state.series_db.items()
   ]
   st.table(pd.DataFrame(db_rows))
+
+  st.markdown("---")
+  st.subheader("➕ Neues Format / Sendung zur Datenbank hinzufügen")
+  
+  with st.form("new_format_form"):
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+      new_show_name = st.text_input("Name der Sendung / Serie")
+      new_genre = st.text_input("Genre (z. B. Sitcom, Dokumentation)")
+    with col_f2:
+      new_net = st.number_input("Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30)
+      new_ad = st.number_input("Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6)
+
+    format_submitted = st.form_submit_button("Format in Datenbank speichern")
+    if format_submitted:
+      if new_show_name.strip():
+        if new_show_name in st.session_state.series_db:
+          st.warning(f"Das Format '{new_show_name}' existiert bereits in der Datenbank!")
+        else:
+          st.session_state.series_db[new_show_name] = {
+              "genre": new_genre if new_genre else "Allgemein",
+              "seasons": {1: 20},
+              "net": int(new_net),
+              "ad": int(new_ad)
+          }
+          save_formats(st.session_state.series_db)
+          st.success(f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft gespeichert!")
+          st.rerun()
+      else:
+                          st.error("Bitte gib einen gültigen Namen für das Format ein.")
