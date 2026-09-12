@@ -4,12 +4,12 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.2
-SAVE_FILE = "sendeplan_v2.2.json"
+# Dateipfad für Version 2.3
+SAVE_FILE = "sendeplan_v2.3.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.2 | Broadcast Direktion",
+    page_title="Master Control v2.3 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
@@ -97,7 +97,7 @@ def load_schedule():
         return json.load(f)
     except:
       pass
-  # Standardbeispiel mit absichtlichem Fehler (Hacks: 45 Min Fenster bei 30 Min Laufzeit)
+  # Standardbeispiel mit absichtlichem Fehler zur Demonstration
   return [
       {
           "Wochentag": "Montag",
@@ -134,10 +134,10 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
 # --- HEADER & KERN-METRIKEN ---
-st.title("📡 Master Control v2.2: Programm-Direktion")
+st.title("📡 Master Control v2.3: Programm-Direktion")
 st.markdown(
-    "**Smart Scheduling & Touch-Dropdown Engine** — Präzise Steuerung ohne"
-    " umständliche Tastatureingaben."
+    "**Smart Scheduling & Touch-Dropdown Engine** — Sendeplan-Direktion mit"
+    " integrierter Live-Fehlerprüfung."
 )
 
 total_items = len(st.session_state.schedule)
@@ -149,7 +149,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.2 (Aktiv)")
+  st.metric("Engine-Status", "v2.3 (Aktiv)")
 with c4:
   st.metric("Persistenz", "Live gesichert")
 
@@ -166,7 +166,7 @@ with tab_matrix:
   st.subheader("Wochenübersicht & Sendeplan")
 
   if st.session_state.schedule:
-    # Zeige reine Übersichtstabelle (Clean & Read-only, damit keine unschönen Tastatur-Popups auf Tablets stören)
+    # 1. Übersichtstabelle (Clean & Read-only)
     df = pd.DataFrame(st.session_state.schedule)
     day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
     if "Wochentag" in df.columns:
@@ -176,26 +176,20 @@ with tab_matrix:
     st.dataframe(df, use_container_width=True)
 
     st.markdown("---")
-    st.subheader(
-        "🛠️ Sendeplatz-Feintuning (Stunden & Minuten per Dropdown anpassen)"
-    )
-    st.markdown(
-        "Wähle unten einen Eintrag aus der Liste aus und korrigiere Startzeit,"
-        " Netto- oder Werbezeit ganz bequem über Dropdowns."
-    )
+    st.subheader("🛠️ Sendeplatz-Feintuning per Kombi-Dropdown")
 
-    # Auswahl des zu bearbeitenden Eintrags
+    # Auswahl des zu bearbeitenden Eintrags im großen Dropdown
     options_labels = [
         f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} – {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
         for i, item in enumerate(st.session_state.schedule)
     ]
     selected_label = st.selectbox(
-        "Programmpunkt für Bearbeitung auswählen", options_labels
+        "1. Programmpunkt aus der Liste auswählen", options_labels
     )
     selected_idx = options_labels.index(selected_label)
     current_item = st.session_state.schedule[selected_idx]
 
-    # Bestimme aktuelle Startstunde und -minute aus dem String "HH:MM - HH:MM"
+    # Startstunde und -minute ermitteln
     try:
       start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
       curr_h = int(start_str_parts[0])
@@ -203,13 +197,13 @@ with tab_matrix:
     except:
       curr_h, curr_m = 20, 15
 
+    # 2. Die süßen kleinen Dropdown-Menüs für Stunde & Minute direkt darunter
     col_e1, col_e2, col_e3, col_e4 = st.columns(4)
     with col_e1:
       new_h = st.selectbox(
           "Start-Stunde", list(range(0, 24)), index=curr_h, key="edit_h"
       )
     with col_e2:
-      # Nimm die nächstgelegene 5-Minuten-Raster-Option oder Standard
       minute_options = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
       closest_m = min(minute_options, key=lambda x: abs(x - curr_m))
       new_m = st.selectbox(
@@ -252,7 +246,7 @@ with tab_matrix:
       st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
       st.rerun()
 
-    # --- ECHTZEIT-LOGIKPRÜFUNG (ANSPRECHEND & SAUBER) ---
+    # --- ECHTZEIT-LOGIKPRÜFUNG (DETAILMELDUNGEN WIEDER DA) ---
     st.markdown("---")
     st.subheader("🔍 Live-Logik & Konsistenz-Prüfung")
     errors_found = []
@@ -269,11 +263,10 @@ with tab_matrix:
         expected_total = int(row["Netto"]) + int(row["Werbung"])
 
         if slot_mins != expected_total:
-          errors_found.goto = True  # marker
           errors_found.append(
-              f"**Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – {row['Sendung']}:** "
-              f"Das eingestellte Zeitfenster ist **{slot_mins} Min.** lang, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben exakt **{expected_total} Min.**! "
-              f"*(Beispiel: Wenn du z.B. Werbung von 6 auf 8 Min. erhöhst, stimmt das Zeitfenster nicht mehr überein)*"
+              f"**Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – Format '{row['Sendung']}':** "
+              f"Das Zeitfenster ist **{slot_mins} Min.** lang, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben exakt **{expected_total} Min.**! "
+              f"*(Hinweis: Wenn du z.B. die Werbung von 6 auf 8 Minuten änderst, stimmt das Zeitfenster nicht mehr überein)*"
           )
       except Exception:
         errors_found.append(
@@ -285,8 +278,8 @@ with tab_matrix:
         st.error(f"⚠️ {err}")
     else:
       st.success(
-          "✅ **Alles perfekt!** Alle Sendezeiten und Laufzeiten (Netto +"
-          " Werbung) stimmen absolut überein. Keine Logikfehler."
+          "✅ **Alles perfekt!** Alle Sendezeiten und Laufzeiten stimmen"
+          " überein. Keine Logikfehler vorhanden."
       )
 
     st.markdown("---")
@@ -303,7 +296,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.2.csv",
+          "sendeplan_v2.3.csv",
           "text/csv",
       )
   else:
@@ -311,7 +304,7 @@ with tab_matrix:
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  with st.form("builder_v22"):
+  with st.form("builder_v23"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
