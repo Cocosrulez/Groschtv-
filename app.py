@@ -27,7 +27,7 @@ class ProgramSchema:
             # Titel bei mehreren Episoden automatisch durchnummerieren
             display_title = f"{title} (Folge {i+1})" if episodes > 1 else title
             
-            # Korrekte Klammern {} für das Dictionary verwenden
+            # Zum Schema hinzufügen
             self.schedule.append({
                 "time": f"{start_str} - {end_str}",
                 "title": display_title,
