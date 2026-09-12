@@ -167,8 +167,8 @@ if "schedule" not in st.session_state:
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v2.7: Programm-Direktion")
 st.markdown(
-    "**Erweiterte Broadcast-Engine (v2.7)** — Exakte DB-Laufzeitvalidierung,"
-    " Slot-Rasterkontrolle und Feintuner."
+    "**Erweiterte Broadcast-Engine (v2.7)** — Feste DB-Laufzeiten,"
+    " Slot-Rasterkontrolle und Werbe-Feintuner."
 )
 
 total_items = len(st.session_state.schedule)
@@ -180,7 +180,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.7 (Exakter DB- & Slot-Check)")
+  st.metric("Engine-Status", "v2.7 (Fixe Netto-Laufzeiten)")
 with c4:
   st.metric("Persistenz", "Aktiv (v2.7 JSON)")
 
@@ -212,8 +212,9 @@ with tab_matrix:
         "🛠️ Sendeplatz-Feintuner & Lösch-Menü öffnen", expanded=False
     ):
       st.markdown(
-          "Wähle einen Programmpunkt aus, um Startzeit, Laufzeiten oder den"
-          " Status zu modifizieren bzw. den Slot komplett zu entfernen."
+          "Wähle einen Programmpunkt aus, um Startzeit, Werbezeit oder den"
+          " Status zu modifizieren. (Die Episoden-Nettolaufzeit ist durch das"
+          " Format starr vorgegeben)."
       )
 
       options_labels = [
@@ -226,6 +227,13 @@ with tab_matrix:
       selected_idx = options_labels.index(selected_label)
       current_item = st.session_state.schedule[selected_idx]
       current_format = SERIES_DATABASE.get(current_item["Sendung"])
+
+      # Fester Netto-Wert aus der Datenbank (oder Fallback auf bestehenden Sendeplan-Wert)
+      fixed_net = (
+          current_format["net"]
+          if current_format
+          else int(current_item["Netto"])
+      )
 
       try:
         start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
@@ -243,13 +251,14 @@ with tab_matrix:
             "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
         )
       with col_e2:
-        new_net = st.number_input(
-            "Netto (Min.)",
-            min_value=1,
-            max_value=300,
-            value=int(current_item["Netto"]),
-            key="edit_net",
+        # Netto ist nun GESPERRT (disabled=True) und kann nicht mehr manuell verbogen werden!
+        st.number_input(
+            "Netto (Fix)",
+            value=fixed_net,
+            disabled=True,
+            key="edit_net_disabled",
         )
+        new_net = fixed_net  # Intern festsetzen
       with col_e3:
         new_ad = st.number_input(
             "Werbung (Min.)",
@@ -286,27 +295,17 @@ with tab_matrix:
           f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
       )
 
-      # --- LIVE-FEEDBACK DIREKT IM EDITOR ---
-      if current_format:
-        expected_net = current_format["net"]
-        if new_net != expected_net:
-          st.error(
-              f"⚠️ **Laufzeit-Fehler:** Das Format **{current_item['Sendung']}**"
-              f" hat eine feste Episodenlänge von **{expected_net} Min.**! Deine"
-              f" Eingabe von **{new_net} Min.** ist ungültig (zu"
-              f" {'kurz' if new_net < expected_net else 'lang'})."
-          )
-
+      # --- LIVE-FEEDBACK FÜR WERBUNG / SLOT ---
       is_exact_slot, slot_msg = get_slot_grid_info(total_len)
       if is_exact_slot:
         st.info(
-            f"ℹ️ **Slot-Info:** Netto ({new_net} Min.) + Werbung ({new_ad}"
-            f" Min.) = **{total_len} Min.** | {slot_msg}"
+            f"ℹ️ **Slot-Info:** Netto ({new_net} Min. fix) + Werbung ({new_ad}"
+            f" Min.) = **{total_len} Min. gesamt** | {slot_msg}"
         )
       else:
         st.warning(
-            f"ℹ️ **Slot-Hinweis:** Netto ({new_net} Min.) + Werbung ({new_ad}"
-            f" Min.) = **{total_len} Min.** | {slot_msg}"
+            f"ℹ️ **Slot-Hinweis:** Netto ({new_net} Min. fix) + Werbung"
+            f" ({new_ad} Min.) = **{total_len} Min. gesamt** | {slot_msg}"
         )
 
       if save_clicked:
@@ -341,10 +340,9 @@ with tab_matrix:
           expected_net = format_spec["net"]
           actual_net = int(row["Netto"])
           if actual_net != expected_net:
-            diff_text = "zu kurz" if actual_net < expected_net else "zu lang"
             errors_found.append(
                 f"**Episodenlängen-Fehler bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** "
-                f"Eingetragene Dauer: **{actual_net} Min.** | Die Episode läuft real jedoch exakt **{expected_net} Min.** ({diff_text})!"
+                f"Eingetragene Dauer: **{actual_net} Min.** | Die Format-DB schreibt exakt **{expected_net} Min.** vor!"
             )
 
         # 2. Check: Reines Zeitfenster (Start- bis Endzeit)
@@ -352,7 +350,6 @@ with tab_matrix:
         s_parts = list(map(int, t_parts[0].split(":")))
         e_parts = list(map(int, t_parts[1].split(":")))
 
-        # Mitternachts-Offset berücksichtigen
         end_total_mins = e_parts[0] * 60 + e_parts[1]
         start_total_mins = s_parts[0] * 60 + s_parts[1]
         if end_total_mins < start_total_mins:
@@ -365,9 +362,9 @@ with tab_matrix:
           errors_found.append(
               f"**Zeitfenster-Konflikt bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** "
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
-          )
+            )
 
-        # 3. Check: Slot-Rasterhinweis bei krummen Sendezeiten (Werbung zu kurz/lang)
+        # 3. Check: Slot-Rasterhinweis bei variierender Werbezeit
         is_exact, info_text = get_slot_grid_info(expected_total)
         if not is_exact:
           slot_warnings.append(
@@ -437,7 +434,7 @@ with tab_builder:
       ad_time = format_info["ad"]
       total_block = net_time + ad_time
       st.markdown(
-          f"💡 **Voreinstellung laut Format-DB:** {net_time} Min. Netto +"
+          f"💡 **Voreinstellung laut Format-DB:** {net_time} Min. Netto (fix) +"
           f" {ad_time} Min. Werbung = **{total_block} Min. gesamt**."
       )
 
