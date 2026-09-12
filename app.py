@@ -57,6 +57,12 @@ st.markdown(
 
 # --- MASTER FORMAT-DATENBANK (Standard-Laufzeiten je Format) ---
 DEFAULT_SERIES_DATABASE = {
+    "Tagesschau / News": {
+        "genre": "Nachrichten",
+        "seasons": {2026: 365},
+        "net": 15,
+        "ad": 0,
+    },
     "Hacks": {
         "genre": "Comedy",
         "seasons": {1: 10, 2: 8, 3: 9},
@@ -142,6 +148,9 @@ def save_formats(db):
 if "series_db" not in st.session_state:
   st.session_state.series_db = load_formats()
 
+if "acknowledged_warnings" not in st.session_state:
+  st.session_state.acknowledged_warnings = set()
+
 
 # --- HILFSFUNKTION FÜR SLOT-HINWEISE ---
 def get_slot_grid_info(total_mins):
@@ -219,8 +228,8 @@ if "schedule" not in st.session_state:
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.0: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v3.0)** — Dynamische Format-Verwaltung, fixe"
-    " Netto-Laufzeiten & Mo-Fr Block-Planung."
+    "**Broadcast-Engine (v3.0)** — Intelligente Episoden-Fortführung,"
+    " tagesbasierte Kollisionsprüfung & Bestätigungs-Modus."
 )
 
 total_items = len(st.session_state.schedule)
@@ -380,12 +389,13 @@ with tab_matrix:
         st.success("Sendeplatz entfernt!")
         st.rerun()
 
-    # --- STRIKTE LIVE-LOGIK & KONSISTENZ-PRÜFUNG ---
+    # --- STRIKTE LIVE-LOGIK & TAGESBASIERTE KOLLISIONS- & LÜCKENPRÜFUNG ---
     st.markdown("---")
     st.subheader("🔍 Live-Logik & Format-Datenbank-Prüfung")
     errors_found = []
     slot_warnings = []
 
+    # 1. Format- und Einzel-Slot Checks
     for idx, row in enumerate(st.session_state.schedule):
       show_name = row["Sendung"]
       format_spec = st.session_state.series_db.get(show_name)
@@ -423,36 +433,100 @@ with tab_matrix:
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
           )
 
+        # Rasterprüfung (nur wenn nicht als OK markiert)
         is_exact, info_text = get_slot_grid_info(expected_total)
-        if not is_exact:
-          slot_warnings.append(
-              f"**Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** {info_text} (Netto: {row['Netto']}m + Werbung: {row['Werbung']}m)"
-          )
+        warn_key = f"raster_{idx}"
+        if not is_exact and warn_key not in st.session_state.acknowledged_warnings:
+          slot_warnings.append((
+              warn_key,
+              f"**Raster-Hinweis bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** {info_text} (Netto: {row['Netto']}m + Werbung: {row['Werbung']}m)",
+          ))
 
       except Exception:
         errors_found.append(
             f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
+    # 2. Tagesbasierte chronologische Prüfung (Überschneidungen / Lücken zwischen Slots)
+    for day in WEEKDAYS:
+      day_slots = [
+          (i, row)
+          for i, row in enumerate(st.session_state.schedule)
+          if row["Wochentag"] == day
+      ]
+      if len(day_slots) > 1:
+
+        def get_mins(item):
+          try:
+            s_str = item[1]["Uhrzeit"].split(" - ")[0]
+            h, m = map(int, s_str.split(":"))
+            return h * 60 + m
+          except:
+            return 0
+
+        day_slots.sort(key=get_mins)
+
+        for k in range(len(day_slots) - 1):
+          idx_curr, curr_row = day_slots[k]
+          idx_next, next_row = day_slots[k + 1]
+          try:
+            c_end_str = curr_row["Uhrzeit"].split(" - ")[1]
+            n_start_str = next_row["Uhrzeit"].split(" - ")[0]
+            ch, cm = map(int, c_end_str.split(":"))
+            nh, nm = map(int, n_start_str.split(":"))
+            c_end = ch * 60 + cm
+            n_start = nh * 60 + nm
+            if c_end > 24 * 60:
+              c_end -= 24 * 60
+
+            # Überschneidungs-Check (Kollision)
+            if n_start < c_end:
+              errors_found.append(
+                  f"**Kollisions-Fehler am {day}:** Sendeplatz #{idx_curr+1} ('{curr_row['Sendung']}', endet {c_end_str}) überschneidet sich direkt mit Sendeplatz #{idx_next+1} ('{next_row['Sendung']}', beginnt {n_start_str})!"
+              )
+            elif n_start > c_end:
+              gap = n_start - c_end
+              gap_key = f"gap_{idx_curr}_{idx_next}"
+              if (
+                  gap_key not in st.session_state.acknowledged_warnings
+                  and gap > 0
+              ):
+                slot_warnings.append((
+                    gap_key,
+                    f"**Lücke am {day}:** Zwischen Sendeplatz #{idx_curr+1} ('{curr_row['Sendung']}') und #{idx_next+1} ('{next_row['Sendung']}') liegt eine Lücke von **{gap} Minuten** ({c_end_str} bis {n_start_str}).",
+                ))
+          except Exception:
+            pass
+
+    # Rendering Fehler
     if errors_found:
       for err in errors_found:
         st.error(f"❌ {err}")
     else:
       st.success(
-          "✅ **Keine Laufzeitfehler:** Alle Episoden entsprechen exakt ihren"
-          " format-spezifischen Datenbank-Vorgaben."
+          "✅ **Keine Laufzeit- oder Kollisionsfehler:** Alle Sendeplätze sind"
+          " zeitlich sauber eingetaktet."
       )
 
+    # Rendering Warnungen mit Bestätigungs-Button ("Als OK markieren")
     if slot_warnings:
-      with st.container():
-        for warn in slot_warnings:
-          st.warning(f"⚠️ {warn}")
+      st.markdown("---")
+      st.markdown("### ⚠️ Hinweise & Raster-Abweichungen")
+      for w_key, warn_text in slot_warnings:
+        col_w1, col_w2 = st.columns([4, 1])
+        with col_w1:
+          st.warning(warn_text)
+        with col_w2:
+          if st.button("Als OK markieren", key=f"ack_{w_key}"):
+            st.session_state.acknowledged_warnings.add(w_key)
+            st.rerun()
 
     st.markdown("---")
     col_a1, col_a2 = st.columns(2)
     with col_a1:
       if st.button("🗑️ Sendeplan komplett zurücksetzen"):
         st.session_state.schedule = []
+        st.session_state.acknowledged_warnings.clear()
         save_schedule([])
         st.rerun()
     with col_a2:
@@ -474,12 +548,26 @@ with tab_builder:
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day_selection = st.selectbox("Wochentag / Block", DAY_OPTIONS)
-      show = st.selectbox("Format / Sendung", list(st.session_state.series_db.keys()))
+      show = st.selectbox(
+          "Format / Sendung", list(st.session_state.series_db.keys())
+      )
       format_info = st.session_state.series_db[show]
       season = st.selectbox("Staffel", list(format_info["seasons"].keys()))
-      episode = st.selectbox(
-          "Start-Episodennummer",
-          list(range(1, format_info["seasons"][season] + 1)),
+
+      # Intelligente Ermittlung der nächsten freien Episodennummer
+      existing_eps = [
+          x["Ep."]
+          for x in st.session_state.schedule
+          if x["Sendung"] == show and x["Staffel"] == season
+      ]
+      next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
+
+      episode = st.number_input(
+          "Start-Episodennummer (Automatisch fortlaufend)",
+          min_value=1,
+          max_value=10000,
+          value=next_ep_suggestion,
+          step=1,
       )
     with col_b2:
       start_t = st.time_input("Startzeit", time(20, 15))
@@ -504,8 +592,7 @@ with tab_builder:
       else:
         target_days = [day_selection]
 
-      # Robuster sequenzieller Episodenzähler über alle Tage & Folgen hinweg
-      current_ep = episode
+      current_ep = int(episode)
 
       for day_name in target_days:
         current_dt = datetime.combine(datetime.today(), start_t)
@@ -534,7 +621,7 @@ with tab_builder:
 
 with tab_db:
   st.subheader("📚 Verifizierte Formate & Standard-Laufzeiten")
-  
+
   db_rows = [
       {
           "Format": k,
@@ -549,30 +636,39 @@ with tab_db:
 
   st.markdown("---")
   st.subheader("➕ Neues Format / Sendung zur Datenbank hinzufügen")
-  
+
   with st.form("new_format_form"):
     col_f1, col_f2 = st.columns(2)
     with col_f1:
       new_show_name = st.text_input("Name der Sendung / Serie")
       new_genre = st.text_input("Genre (z. B. Sitcom, Dokumentation)")
     with col_f2:
-      new_net = st.number_input("Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30)
-      new_ad = st.number_input("Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6)
+      new_net = st.number_input(
+          "Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30
+      )
+      new_ad = st.number_input(
+          "Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6
+      )
 
     format_submitted = st.form_submit_button("Format in Datenbank speichern")
     if format_submitted:
       if new_show_name.strip():
         if new_show_name in st.session_state.series_db:
-          st.warning(f"Das Format '{new_show_name}' existiert bereits in der Datenbank!")
+          st.warning(
+              f"Das Format '{new_show_name}' existiert bereits in der Datenbank!"
+          )
         else:
           st.session_state.series_db[new_show_name] = {
               "genre": new_genre if new_genre else "Allgemein",
               "seasons": {1: 20},
               "net": int(new_net),
-              "ad": int(new_ad)
+              "ad": int(new_ad),
           }
           save_formats(st.session_state.series_db)
-          st.success(f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft gespeichert!")
+          st.success(
+              f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft"
+              " gespeichert!"
+          )
           st.rerun()
       else:
-          st.error("Bitte gib einen gültigen Namen für das Format ein.")
+        st.error("Bitte gib einen gültigen Namen für das Format ein.")
