@@ -65,9 +65,31 @@ SERIES_DATABASE = {
 if "master_schedule" not in st.session_state:
     st.session_state.master_schedule = []
 
+# --- HILFSFUNKTIONEN FÜR ZEIT-KOLLISIONEN ---
+def time_to_minutes(t: time) -> int:
+    return t.hour * 60 + t.minute
+
+def check_time_conflict(new_start_min: int, new_end_min: int, new_pattern: str, new_date: str, existing_schedule: list) -> bool:
+    """Prüft, ob sich der neue Sendeplatz mit bestehenden Einträgen zeitlich überschneidet."""
+    for item in existing_schedule:
+        # Prüfe nur, wenn Muster oder Datum übereinstimmen (Kollisionsprüfung im selben Zeitsfenster)
+        if item["Muster"] == new_pattern or (new_pattern == "Einmalig (Datum wählbar)" and item["Datum"] == new_date):
+            # Parse bestehende Start- und Endzeit aus dem String "HH:MM - HH:MM"
+            times_part = item["Zeit"].split(" - ")
+            ex_start_parts = list(map(int, times_part[0].split(":")))
+            ex_end_parts = list(map(int, times_part[1].split(":")))
+            
+            ex_start_min = ex_start_parts[0] * 60 + ex_start_parts[1]
+            ex_end_min = ex_end_parts[0] * 60 + ex_end_parts[1]
+            
+            # Überschneidungs-Logik: (StartA < EndB) und (EndA > StartB)
+            if (new_start_min < ex_end_min) and (new_end_min > ex_start_min):
+                return True
+    return False
+
 # --- UI HEADER ---
 st.title("📺 Programmdirektion: Master Control & Sendeplan")
-st.markdown("Präziser Aufbau des Programmschemas mit Minuten- und Werbeplanung, flexibler Einzelbearbeitung und Validierung.")
+st.markdown("Professioneller Sendeplan-Builder mit automatischer Endzeit-Berechnung und intelligenter Kollisionsprüfung.")
 st.markdown("---")
 
 tab_builder, tab_view, tab_database = st.tabs(["⚡ Sendeplan bauen", "📋 Programmschema & Bearbeitung", "📚 Serien-Datenbank"])
@@ -98,14 +120,11 @@ with tab_builder:
             
             if day_option == "Einmalig (Datum wählbar)":
                 schedule_date = st.date_input("Sendedatum", datetime.today())
+                date_str = schedule_date.strftime("%Y-%m-%d")
             else:
-                schedule_date = None
+                date_str = "Wiederkehrend"
                 
-            col_t1, col_t2 = st.columns(2)
-            with col_t1:
-                start_time = st.time_input("Startzeit", time(20, 15))
-            with col_t2:
-                end_time = st.time_input("Endezeit", time(21, 15))
+            start_time = st.time_input("Startzeit", time(20, 15))
                 
         st.markdown("#### Laufzeit & Werbe-Details")
         col_r1, col_r2, col_r3 = st.columns(3)
@@ -115,35 +134,50 @@ with tab_builder:
             ad_runtime = st.number_input("Werbezeit (Min.)", min_value=0, max_value=120, value=default_ad)
         with col_r3:
             total_duration = net_runtime + ad_runtime
-            st.metric("Gesamt-Slot-Dauer", f"{total_duration} Min.")
+            st.metric("Gesamtdauer (Netto + Werbung)", f"{total_duration} Min.")
+
+        # Automatische Endzeit-Berechnung anzeigen
+        start_dt = datetime.combine(datetime.today(), start_time)
+        calculated_end_dt = start_dt + timedelta(minutes=total_duration)
+        calculated_end_time = calculated_end_dt.time()
+        
+        st.info(f"💡 Automatisch berechnete Sendezeit: **{start_time.strftime('%H:%M')} bis {calculated_end_time.strftime('%H:%M')} Uhr**")
 
         submitted = st.form_submit_button("Sendung in den Plan schreiben")
         
         if submitted:
-            entry = {
-                "Muster": day_option,
-                "Datum": schedule_date.strftime("%Y-%m-%d") if schedule_date else "Wiederkehrend",
-                "Zeit": f"{start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}",
-                "Sendung": show_name,
-                "Staffel": season_num,
-                "Episode": episode_num,
-                "Netto (Min.)": net_runtime,
-                "Werbung (Min.)": ad_runtime,
-                "Gesamt (Min.)": total_duration
-            }
-            st.session_state.master_schedule.append(entry)
-            st.success(f"Erfolgreich hinzugefügt: {show_name} (St. {season_num}, Ep. {episode_num}) um {start_time.strftime('%H:%M')} Uhr!")
+            start_min = time_to_minutes(start_time)
+            end_min = time_to_minutes(calculated_end_time)
+            
+            # Kollisionsprüfung ausführen
+            has_conflict = check_time_conflict(start_min, end_min, day_option, date_str, st.session_state.master_schedule)
+            
+            if has_conflict:
+                st.error(f"❌ **Sendeplatz-Konflikt!** Um {start_time.strftime('%H:%M')} Uhr ist der Sendeplatz im gewählten Muster bereits belegt. Bitte wähle eine andere Zeit.")
+            else:
+                entry = {
+                    "Muster": day_option,
+                    "Datum": date_str,
+                    "Zeit": f"{start_time.strftime('%H:%M')} - {calculated_end_time.strftime('%H:%M')}",
+                    "Sendung": show_name,
+                    "Staffel": season_num,
+                    "Episode": episode_num,
+                    "Netto (Min.)": net_runtime,
+                    "Werbung (Min.)": ad_runtime,
+                    "Gesamt (Min.)": total_duration
+                }
+                st.session_state.master_schedule.append(entry)
+                st.success(f"Erfolgreich eingeplant: {show_name} (St. {season_num}, Ep. {episode_num}) von {start_time.strftime('%H:%M')} bis {calculated_end_time.strftime('%H:%M')} Uhr!")
+                st.rerun()
 
 with tab_view:
     st.subheader("Programmschema verwalten & bearbeiten")
     
     if len(st.session_state.master_schedule) > 0:
-        # Als Tabelle anzeigen
         df_plan = pd.DataFrame(st.session_state.master_schedule)
         st.dataframe(df_plan, use_container_width=True)
         
         st.markdown("### Einzelnen Eintrag löschen")
-        # Auswahlbox für Zeilen zum gezielten Löschen
         row_options = [f"[{i}] {row['Zeit']} - {row['Sendung']} (Staffel {row['Staffel']}, Ep. {row['Episode']})" for i, row in enumerate(st.session_state.master_schedule)]
         selected_to_delete = st.selectbox("Wähle den Programmpunkt aus, der entfernt werden soll:", row_options)
         
