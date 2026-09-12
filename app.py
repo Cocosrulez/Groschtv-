@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfade für Version 3.0
+# Dateipfad für Version 3.0
 SAVE_FILE = "sendeplan_v3.0.json"
 FORMATS_FILE = "formats_v3.0.json"
 
@@ -391,7 +391,12 @@ with tab_matrix:
       format_spec = st.session_state.series_db.get(show_name)
 
       try:
-        if format_spec:
+        if not format_spec:
+          errors_found.append(
+              f"**Unbekanntes Format bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}):** "
+              f"Das Format '{show_name}' existiert nicht in der Format-Datenbank!"
+          )
+        else:
           expected_net = format_spec["net"]
           actual_net = int(row["Netto"])
           if actual_net != expected_net:
@@ -499,34 +504,28 @@ with tab_builder:
       else:
         target_days = [day_selection]
 
-      for d_idx, day_name in enumerate(target_days):
+      # Robuster sequenzieller Episodenzähler über alle Tage & Folgen hinweg
+      current_ep = episode
+
+      for day_name in target_days:
         current_dt = datetime.combine(datetime.today(), start_t)
         for i in range(count):
           start_str = current_dt.strftime("%H:%M")
           current_dt += timedelta(minutes=total_block)
           end_str = current_dt.strftime("%H:%M")
 
-          ep_num = (
-              episode
-              + i
-              + (
-                  d_idx * count
-                  if day_selection == "Montag bis Freitag (Mo-Fr)"
-                  else 0
-              )
-          )
-
           added_entries.append({
               "Wochentag": day_name,
               "Uhrzeit": f"{start_str} - {end_str}",
               "Sendung": show,
               "Staffel": season,
-              "Ep.": ep_num,
+              "Ep.": current_ep,
               "Netto": net_time,
               "Werbung": ad_time,
               "Gesamt": total_block,
               "Status": plan_status,
           })
+          current_ep += 1
 
       st.session_state.schedule.extend(added_entries)
       save_schedule(st.session_state.schedule)
@@ -576,4 +575,4 @@ with tab_db:
           st.success(f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft gespeichert!")
           st.rerun()
       else:
-                          st.error("Bitte gib einen gültigen Namen für das Format ein.")
+          st.error("Bitte gib einen gültigen Namen für das Format ein.")
