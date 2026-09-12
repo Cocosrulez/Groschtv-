@@ -115,6 +115,7 @@ WEEKDAYS = [
     "Samstag",
     "Sonntag",
 ]
+DAY_OPTIONS = WEEKDAYS + ["Montag bis Freitag (Mo-Fr)"]
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
@@ -453,7 +454,7 @@ with tab_builder:
   with st.form("builder_v30"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-      day = st.selectbox("Wochentag", WEEKDAYS)
+      day_selection = st.selectbox("Wochentag / Block", DAY_OPTIONS)
       show = st.selectbox("Format / Sendung", list(SERIES_DATABASE.keys()))
       format_info = SERIES_DATABASE[show]
       season = st.selectbox("Staffel", list(format_info["seasons"].keys()))
@@ -477,23 +478,44 @@ with tab_builder:
 
     submitted = st.form_submit_button("Sendung in den Sendeplan aufnehmen")
     if submitted:
-      current_dt = datetime.combine(datetime.today(), start_t)
       added_entries = []
-      for i in range(count):
-        start_str = current_dt.strftime("%H:%M")
-        current_dt += timedelta(minutes=total_block)
-        end_str = current_dt.strftime("%H:%M")
-        added_entries.append({
-            "Wochentag": day,
-            "Uhrzeit": f"{start_str} - {end_str}",
-            "Sendung": show,
-            "Staffel": season,
-            "Ep.": episode + i,
-            "Netto": net_time,
-            "Werbung": ad_time,
-            "Gesamt": total_block,
-            "Status": plan_status,
-        })
+
+      # Unterscheidung ob einzelner Tag oder Mo-Fr Block
+      if day_selection == "Montag bis Freitag (Mo-Fr)":
+        target_days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+      else:
+        target_days = [day_selection]
+
+      for d_idx, day_name in enumerate(target_days):
+        current_dt = datetime.combine(datetime.today(), start_t)
+        for i in range(count):
+          start_str = current_dt.strftime("%H:%M")
+          current_dt += timedelta(minutes=total_block)
+          end_str = current_dt.strftime("%H:%M")
+
+          # Episodennummerierung bei Mo-Fr über die Wochentage hinweg fortlaufend anpassen
+          ep_num = (
+              episode
+              + i
+              + (
+                  d_idx * count
+                  if day_selection == "Montag bis Freitag (Mo-Fr)"
+                  else 0
+              )
+          )
+
+          added_entries.append({
+              "Wochentag": day_name,
+              "Uhrzeit": f"{start_str} - {end_str}",
+              "Sendung": show,
+              "Staffel": season,
+              "Ep.": ep_num,
+              "Netto": net_time,
+              "Werbung": ad_time,
+              "Gesamt": total_block,
+              "Status": plan_status,
+          })
+
       st.session_state.schedule.extend(added_entries)
       save_schedule(st.session_state.schedule)
       st.success("Erfolgreich eingeplant & gespeichert!")
