@@ -26,7 +26,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- MASTER FORMAT-DATENBANK ---
+# --- MASTER FORMAT-DATENBANK (Individuelle Standard-Laufzeiten je Format) ---
 SERIES_DATABASE = {
     "Hacks": {
         "genre": "Comedy",
@@ -167,8 +167,8 @@ if "schedule" not in st.session_state:
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v2.7: Programm-Direktion")
 st.markdown(
-    "**Erweiterte Broadcast-Engine (v2.7)** — Feste DB-Laufzeiten,"
-    " Slot-Rasterkontrolle und Werbe-Feintuner."
+    "**Erweiterte Broadcast-Engine (v2.7)** — Format-abhängige fixe"
+    " Netto-Laufzeiten, Werbe-Feintuner & Slot-Rasterkontrolle."
 )
 
 total_items = len(st.session_state.schedule)
@@ -180,7 +180,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.7 (Fixe Netto-Laufzeiten)")
+  st.metric("Engine-Status", "v2.7 (Format-Spezifische Netto-Sperre)")
 with c4:
   st.metric("Persistenz", "Aktiv (v2.7 JSON)")
 
@@ -212,9 +212,10 @@ with tab_matrix:
         "🛠️ Sendeplatz-Feintuner & Lösch-Menü öffnen", expanded=False
     ):
       st.markdown(
-          "Wähle einen Programmpunkt aus, um Startzeit, Werbezeit oder den"
-          " Status zu modifizieren. (Die Episoden-Nettolaufzeit ist durch das"
-          " Format starr vorgegeben)."
+          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit wird"
+          " format-abhängig (z.B. 24 Min. bei Hacks, 45 Min. bei Breaking Bad)"
+          " automatisch aus der Datenbank geladen und geschützt. Du kannst"
+          " flexibel die Werbezeit und die Startzeit anpassen."
       )
 
       options_labels = [
@@ -226,9 +227,9 @@ with tab_matrix:
       )
       selected_idx = options_labels.index(selected_label)
       current_item = st.session_state.schedule[selected_idx]
-      current_format = SERIES_DATABASE.get(current_item["Sendung"])
 
-      # Fester Netto-Wert aus der Datenbank (oder Fallback auf bestehenden Sendeplan-Wert)
+      # Format-Spezifische Netto-Laufzeit dynamisch aus der Datenbank auslesen!
+      current_format = SERIES_DATABASE.get(current_item["Sendung"])
       fixed_net = (
           current_format["net"]
           if current_format
@@ -251,14 +252,14 @@ with tab_matrix:
             "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
         )
       with col_e2:
-        # Netto ist nun GESPERRT (disabled=True) und kann nicht mehr manuell verbogen werden!
+        # Netto ist an das gewählte Format gebunden und gesperrt!
         st.number_input(
-            "Netto (Fix)",
+            f"Netto ({current_item['Sendung']})",
             value=fixed_net,
             disabled=True,
             key="edit_net_disabled",
         )
-        new_net = fixed_net  # Intern festsetzen
+        new_net = fixed_net
       with col_e3:
         new_ad = st.number_input(
             "Werbung (Min.)",
@@ -295,17 +296,19 @@ with tab_matrix:
           f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
       )
 
-      # --- LIVE-FEEDBACK FÜR WERBUNG / SLOT ---
+      # --- LIVE-FEEDBACK FÜR WERBUNG & SLOT-ABWEICHUNG ---
       is_exact_slot, slot_msg = get_slot_grid_info(total_len)
       if is_exact_slot:
         st.info(
-            f"ℹ️ **Slot-Info:** Netto ({new_net} Min. fix) + Werbung ({new_ad}"
-            f" Min.) = **{total_len} Min. gesamt** | {slot_msg}"
+            f"ℹ️ **Slot-Info:** {current_item['Sendung']} (Netto: {new_net} Min."
+            f" fix) + Werbung ({new_ad} Min.) = **{total_len} Min. gesamt** |"
+            f" {slot_msg}"
         )
       else:
         st.warning(
-            f"ℹ️ **Slot-Hinweis:** Netto ({new_net} Min. fix) + Werbung"
-            f" ({new_ad} Min.) = **{total_len} Min. gesamt** | {slot_msg}"
+            f"ℹ️ **Slot-Hinweis:** {current_item['Sendung']} (Netto: {new_net}"
+            f" Min. fix) + Werbung ({new_ad} Min.) = **{total_len} Min. gesamt**"
+            f" | {slot_msg}"
         )
 
       if save_clicked:
@@ -335,14 +338,14 @@ with tab_matrix:
       format_spec = SERIES_DATABASE.get(show_name)
 
       try:
-        # 1. Strikter Check: Stimmt die Netto-Dauer EXAKT mit der Format-DB überein?
+        # 1. Strikter Check: Stimmt die Netto-Dauer EXAKT mit dem jeweiligen Format überein?
         if format_spec:
           expected_net = format_spec["net"]
           actual_net = int(row["Netto"])
           if actual_net != expected_net:
             errors_found.append(
                 f"**Episodenlängen-Fehler bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** "
-                f"Eingetragene Dauer: **{actual_net} Min.** | Die Format-DB schreibt exakt **{expected_net} Min.** vor!"
+                f"Eingetragene Dauer: **{actual_net} Min.** | Das Format '{show_name}' schreibt in der DB exakt **{expected_net} Min.** vor!"
             )
 
         # 2. Check: Reines Zeitfenster (Start- bis Endzeit)
@@ -362,9 +365,9 @@ with tab_matrix:
           errors_found.append(
               f"**Zeitfenster-Konflikt bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':** "
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
-            )
+          )
 
-        # 3. Check: Slot-Rasterhinweis bei variierender Werbezeit
+        # 3. Check: Slot-Rasterhinweis bei variierender Werbung
         is_exact, info_text = get_slot_grid_info(expected_total)
         if not is_exact:
           slot_warnings.append(
@@ -382,8 +385,8 @@ with tab_matrix:
         st.error(f"❌ {err}")
     else:
       st.success(
-          "✅ **Keine Laufzeitfehler:** Alle Episoden entsprechen exakt den"
-          " realen Format-Laufzeiten der Datenbank."
+          "✅ **Keine Laufzeitfehler:** Alle Episoden entsprechen exakt ihren"
+          " format-spezifischen Datenbank-Vorgaben."
       )
 
     # Rendering Warnungen / Slot-Infos
@@ -434,8 +437,9 @@ with tab_builder:
       ad_time = format_info["ad"]
       total_block = net_time + ad_time
       st.markdown(
-          f"💡 **Voreinstellung laut Format-DB:** {net_time} Min. Netto (fix) +"
-          f" {ad_time} Min. Werbung = **{total_block} Min. gesamt**."
+          f"💡 **Voreinstellung aus Format-DB für '{show}':** {net_time} Min."
+          f" Netto (fix) + {ad_time} Min. Werbung = **{total_block} Min."
+          f" gesamt**."
       )
 
     submitted = st.form_submit_button("Sendung in den Sendeplan aufnehmen")
