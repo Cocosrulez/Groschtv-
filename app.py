@@ -81,7 +81,7 @@ if "master_schedule" not in st.session_state:
     st.session_state.master_schedule = [
         {
             "Tag / Wochentag": "Montag",
-            "Zeitfenster": "20:15 - 21:00",
+            "Zeitfenster": "20:15 - 21:00", # Absichtlich als Test für den Logikfehler (45 Min. Fenster bei 30 Min. Dauer)
             "Sendung": "Hacks",
             "Staffel": 1,
             "Episode": 1,
@@ -122,7 +122,7 @@ def check_time_conflict(new_start_min: int, new_end_min: int, target_day: str, e
 
 # --- HEADER & KPI DASHBOARD ---
 st.title("📡 Master Control: Primetime- & Sendeplan-Direktion")
-st.markdown("**Tagesgenaue Programmierung** — Plane dein Abendprogramm (20:15 Uhr, 21:15 Uhr, etc.) flexibel nach Wochentagen mit variablen Laufzeiten und automatischer Kollisionsprüfung.")
+st.markdown("**Tagesgenaue Programmierung** — Volle Kontrolle durch Dropdown-Menüs und automatische Logik-Fehlererkennung.")
 
 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
 with col_kpi1:
@@ -130,20 +130,20 @@ with col_kpi1:
 with col_kpi2:
     st.metric(label="Verfügbare Formate in DB", value=len(SERIES_DATABASE))
 with col_kpi3:
-    st.metric(label="Modus", value="Wöchentliche Primetime-Steuerung")
+    st.metric(label="Logik-Engine", value="Aktiv (Prüft Laufzeiten)")
 
 st.markdown("---")
 
 # --- NAVIGATION TABS ---
 tab_builder, tab_view, tab_database = st.tabs([
     "⚡ Programmpunkt hinzufügen (Primetime / Tag)", 
-    "📋 Sendeplan nach Wochentagen verwalten", 
+    "📋 Sendeplan & Logik-Prüfung", 
     "📚 Serien- & Format-Datenbank"
 ])
 
 with tab_builder:
-    st.subheader("Sendeplatz minutengenau einplanen (Mo–So)")
-    st.markdown("Wähle den Wochentag, die Startzeit, passe Netto- sowie Werbezeiten an und plane optional direkt mehrere Episoden in Folge ein.")
+    st.subheader("Sendeplatz präzise per Dropdown einplanen (Mo–So)")
+    st.markdown("Wähle alle Parameter bequem über feste Auswahllisten aus.")
     
     with st.form("primetime_builder_form"):
         col_f1, col_f2 = st.columns(2)
@@ -162,30 +162,40 @@ with tab_builder:
             season_num = st.selectbox("Staffel", available_seasons)
             
             max_eps = SERIES_DATABASE[show_name]["seasons"][season_num]
-            episode_num = st.number_input("Start-Episodennummer", min_value=1, max_value=max_eps, step=1)
+            episode_choices = list(range(1, max_eps + 1))
+            # Dropdown für die Start-Episodennummer
+            episode_num = st.selectbox("Start-Episodennummer", episode_choices)
 
         with col_f2:
             st.markdown("#### ⏰ Sendezeit-Fenster & Mehrfachauswahl")
             start_time = st.time_input("Startzeit (z.B. 20:15)", time(20, 15))
             
-            # Anzahl der Episoden für automatische Verkettung
-            episodes_count = st.number_input("Anzahl Folgen (gleich mehrere nacheinander einplanen)", min_value=1, max_value=10, value=1, step=1)
+            # Dropdown für die Anzahl der Folgen (kein Plus/Minus mehr)
+            episodes_count = st.selectbox(
+                "Anzahl Folgen (gleich mehrere nacheinander einplanen)", 
+                options=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            )
             
             st.markdown("---")
-            net_runtime = st.number_input("Netto-Laufzeit pro Folge (Min.)", min_value=1, max_value=300, value=default_net)
-            ad_runtime = st.number_input("Werbezeit pro Folge (Min.)", min_value=0, max_value=120, value=default_ad)
+            # Dropdowns für Laufzeiten (feste Auswahllisten)
+            net_options = [15, 20, 21, 22, 24, 28, 30, 42, 45, 50, 60, 90, 105, 120]
+            net_default_idx = net_options.index(default_net) if default_net in net_options else 6
+            net_runtime = st.selectbox("Netto-Laufzeit pro Folge (Min.)", options=net_options, index=net_default_idx)
+            
+            ad_options = [0, 3, 5, 6, 8, 9, 10, 12, 15, 20]
+            ad_default_idx = ad_options.index(default_ad) if default_ad in ad_options else 3
+            ad_runtime = st.selectbox("Werbezeit pro Folge (Min.)", options=ad_options, index=ad_default_idx)
             
         total_duration = net_runtime + ad_runtime
         
-        # Vorschau für die Episoden berechnen
+        # Vorschau berechnen
         start_dt = datetime.combine(datetime.today(), start_time)
         calculated_end_dt = start_dt + timedelta(minutes=total_duration * episodes_count)
         
         if episodes_count > 1:
-            st.info(f"💡 **Mehrfach-Planung aktiv:** Es werden **{episodes_count} Folgen** nacheinander eingeplant. Gesamtdauer von {start_time.strftime('%H:%M')} bis ca. **{calculated_end_dt.time().strftime('%H:%M')} Uhr**.")
+            st.info(f"💡 **Mehrfach-Planung aktiv:** Es werden **{episodes_count} Folgen** eingeplant. Sende-Ende ca. **{calculated_end_dt.time().strftime('%H:%M')} Uhr** (Gesamtdauer: {total_duration * episodes_count} Min.).")
         else:
-            single_end_dt = start_dt + timedelta(minutes=total_duration)
-            st.info(f"💡 **Sende-Fenster:** Von **{start_time.strftime('%H:%M')} Uhr** bis **{single_end_dt.time().strftime('%H:%M')} Uhr** ({total_duration} Min.).")
+            st.info(f"💡 **Sende-Fenster Vorschau:** Von **{start_time.strftime('%H:%M')} Uhr** bis **{calculated_end_dt.time().strftime('%H:%M')} Uhr** (Dauer pro Folge: {total_duration} Min.).")
 
         submitted = st.form_submit_button("Sendung(en) in das tagesgenaue Schema aufnehmen")
         
@@ -194,7 +204,6 @@ with tab_builder:
             current_dt = datetime.combine(datetime.today(), start_time)
             conflict_found = False
             
-            # Schleife für die automatische Zeitverkettung bei mehreren Episoden
             for i in range(episodes_count):
                 current_ep_num = episode_num + i
                 
@@ -204,7 +213,6 @@ with tab_builder:
                 start_min = time_to_minutes(ep_start_dt.time())
                 end_min = time_to_minutes(ep_end_dt.time())
                 
-                # Kollisionsprüfung gegen bestehenden Plan und bereits in dieser Schleife erstellte Einträge
                 if check_time_conflict(start_min, end_min, target_day, st.session_state.master_schedule + temp_entries):
                     conflict_found = True
                     break
@@ -223,15 +231,15 @@ with tab_builder:
                 current_dt = ep_end_dt
             
             if conflict_found:
-                st.error(f"❌ **Sendeplatz-Kollision am {target_day}!** Einer der Sendeplätze überschneidet sich mit einer bereits eingetragenen Sendung.")
+                st.error(f"❌ **Sendeplatz-Kollision am {target_day}!** Überschneidung mit einem anderen Sendeplatz.")
             else:
                 st.session_state.master_schedule.extend(temp_entries)
                 st.success(f"Erfolgreich für **{target_day}** eingepflegt: {episodes_count} Folge(n) von {show_name} ab {start_time.strftime('%H:%M')} Uhr!")
                 st.rerun()
 
 with tab_view:
-    st.subheader("Wochen- & Primetime-Sendeplan im Überblick")
-    st.markdown("Hier siehst du alle geplanten Sendungen nach Wochentagen sortiert. Du kannst einzelne Einträge gezielt prüfen oder fehlerhafte Blöcke sofort löschen.")
+    st.subheader("Wochen-Sendeplan & Automatische Logikprüfung")
+    st.markdown("Hier gleicht das System automatisch ab, ob die eingetragenen Zeitfenster exakt zu den tatsächlichen Programmdauern passen.")
     
     if len(st.session_state.master_schedule) > 0:
         df_plan = pd.DataFrame(st.session_state.master_schedule)
@@ -241,9 +249,31 @@ with tab_view:
             df_plan["Sort"] = df_plan["Tag / Wochentag"].map(day_order).fillna(8)
             df_plan = df_plan.sort_values(by=["Sort", "Zeitfenster"]).drop(columns=["Sort"])
         
+        # LOGIK-PRÜFUNG: Abgleich zwischen Zeitfenster-Länge und geplanter Gesamtdauer
+        logik_meldungen = []
+        for idx, row in df_plan.iterrows():
+            t_parts = row["Zeitfenster"].split(" - ")
+            s_parts = list(map(int, t_parts[0].split(":")))
+            e_parts = list(map(int, t_parts[1].split(":")))
+            slot_duration = (e_parts[0] * 60 + e_parts[1]) - (s_parts[0] * 60 + s_parts[1])
+            
+            if slot_duration != row["Gesamt (Min.)"]:
+                logik_meldungen.append(
+                    f"⚠️ **Logikfehler bei '{row['Sendung']}' (Staffel {row['Staffel']}, Ep. {row['Episode']}) am {row['Tag / Wochentag']} ({row['Zeitfenster']}):** "
+                    f"Das eingetragene Zeitfenster ist **{slot_duration} Minuten** lang, aber die Sendung benötigt laut Laufzeit (Netto + Werbung) exakt **{row['Gesamt (Min.)']} Minuten**!"
+                )
+
+        if logik_meldungen:
+            st.error("### 🚨 Erkannte Logikfehler im Sendeplan:")
+            for m in logik_meldungen:
+                st.markdown(m)
+            st.markdown("---")
+        else:
+            st.success("✅ Alle eingetragenen Sendezeiten stimmen exakt mit den Programmdauern überein. Keine Logikfehler gefunden!")
+
         st.dataframe(df_plan, use_container_width=True)
         
-        st.markdown("### 🛠️ Programmpunkte gezielt bearbeiten oder löschen")
+        st.markdown("### 🛠️ Programmpunkte verwalten")
         row_options = [f"[{i}] {row['Tag / Wochentag']} | {row['Zeitfenster']} - {row['Sendung']} (St. {row['Staffel']}, Ep. {row['Episode']})" for i, row in enumerate(st.session_state.master_schedule)]
         selected_to_delete = st.selectbox("Wähle den zu löschenden Programmpunkt aus:", row_options)
         
@@ -268,7 +298,7 @@ with tab_view:
             mime="text/csv",
         )
     else:
-        st.info("Das Programmschema ist aktuell leer. Füge im ersten Tab die ersten Sendungen hinzu.")
+        st.info("Das Programmschema ist aktuell leer.")
 
 with tab_database:
     st.subheader("Verifizierte Serien- & Laufzeit-Referenz")
