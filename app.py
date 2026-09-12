@@ -168,7 +168,7 @@ with tab_builder:
             st.markdown("#### ⏰ Sendezeit-Fenster & Mehrfachauswahl")
             start_time = st.time_input("Startzeit (z.B. 20:15)", time(20, 15))
             
-            # NEU: Anzahl der Episoden für automatische Verkettung
+            # Anzahl der Episoden für automatische Verkettung
             episodes_count = st.number_input("Anzahl Folgen (gleich mehrere nacheinander einplanen)", min_value=1, max_value=10, value=1, step=1)
             
             st.markdown("---")
@@ -177,7 +177,7 @@ with tab_builder:
             
         total_duration = net_runtime + ad_runtime
         
-        # Vorschau für die erste Episode berechnen
+        # Vorschau für die Episoden berechnen
         start_dt = datetime.combine(datetime.today(), start_time)
         calculated_end_dt = start_dt + timedelta(minutes=total_duration * episodes_count)
         
@@ -220,7 +220,7 @@ with tab_builder:
                     "Gesamt (Min.)": total_duration
                 }
                 temp_entries.append(entry)
-                current_dt = ep_end_dt # Nächste Episode startet genau hier
+                current_dt = ep_end_dt
             
             if conflict_found:
                 st.error(f"❌ **Sendeplatz-Kollision am {target_day}!** Einer der Sendeplätze überschneidet sich mit einer bereits eingetragenen Sendung.")
@@ -236,7 +236,6 @@ with tab_view:
     if len(st.session_state.master_schedule) > 0:
         df_plan = pd.DataFrame(st.session_state.master_schedule)
         
-        # Nach Wochentag sortieren für bessere Übersicht
         day_order = {"Montag": 1, "Dienstag": 2, "Mittwoch": 3, "Donnerstag": 4, "Freitag": 5, "Samstag": 6, "Sonntag": 7, "Montag bis Freitag (Mo-Fr Serie)": 0}
         if "Tag / Wochentag" in df_plan.columns:
             df_plan["Sort"] = df_plan["Tag / Wochentag"].map(day_order).fillna(8)
