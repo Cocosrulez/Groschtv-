@@ -228,7 +228,7 @@ if "schedule" not in st.session_state:
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.0: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v3.0)** — Intelligente Episoden-Fortführung,"
+    "**Broadcast-Engine (v3.0)** — Intelligente Episoden-Sperre,"
     " tagesbasierte Kollisionsprüfung & Bestätigungs-Modus."
 )
 
@@ -554,7 +554,7 @@ with tab_builder:
       format_info = st.session_state.series_db[show]
       season = st.selectbox("Staffel", list(format_info["seasons"].keys()))
 
-      # Intelligente Ermittlung der nächsten freien Episodennummer
+      # Ermittlung bereits vergebener Episoden für diese Sendung & Staffel
       existing_eps = [
           x["Ep."]
           for x in st.session_state.schedule
@@ -563,16 +563,29 @@ with tab_builder:
       next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
 
       episode = st.number_input(
-          "Start-Episodennummer (Automatisch fortlaufend)",
+          "Start-Episodennummer (Automatisch nächste freie Folge)",
           min_value=1,
           max_value=10000,
           value=next_ep_suggestion,
           step=1,
       )
+
+      if existing_eps:
+        st.info(
+            f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden"
+            f" {sorted(list(set(existing_eps)))}"
+        )
     with col_b2:
       start_t = st.time_input("Startzeit", time(20, 15))
       count = st.selectbox("Anzahl Folgen nacheinander", list(range(1, 6)))
       plan_status = st.selectbox("Status", STATUS_OPTIONS)
+
+      # Checkbox zum Entsperren / Erlauben von Doppelbelegungen
+      override_lock = st.checkbox(
+          "🔄 Bereits vergebene Episoden für Neuzugänge freischalten"
+          " (Überschreiben erlauben)",
+          value=False,
+      )
 
       net_time = format_info["net"]
       ad_time = format_info["ad"]
@@ -593,31 +606,51 @@ with tab_builder:
         target_days = [day_selection]
 
       current_ep = int(episode)
+      conflict_found = False
+      conflicting_eps = []
 
-      for day_name in target_days:
-        current_dt = datetime.combine(datetime.today(), start_t)
-        for i in range(count):
-          start_str = current_dt.strftime("%H:%M")
-          current_dt += timedelta(minutes=total_block)
-          end_str = current_dt.strftime("%H:%M")
+      # Vorab-Prüfung auf bereits vergebene Episoden (falls nicht überschrieben)
+      if not override_lock:
+        check_ep = current_ep
+        for _ in target_days:
+          for _ in range(count):
+            if check_ep in existing_eps:
+              conflict_found = True
+              conflicting_eps.append(check_ep)
+            check_ep += 1
 
-          added_entries.append({
-              "Wochentag": day_name,
-              "Uhrzeit": f"{start_str} - {end_str}",
-              "Sendung": show,
-              "Staffel": season,
-              "Ep.": current_ep,
-              "Netto": net_time,
-              "Werbung": ad_time,
-              "Gesamt": total_block,
-              "Status": plan_status,
-          })
-          current_ep += 1
+      if conflict_found and not override_lock:
+        st.error(
+            f"🚫 **Episoden-Sperre aktiv:** Die Episoden {list(set(conflicting_eps))}"
+            f" für '{show}' (Staffel {season}) sind bereits im Sendeplan"
+            " vorhanden! Aktiviere die Checkbox 'Überschreiben erlauben', um"
+            " sie dennoch hinzuzufügen."
+        )
+      else:
+        for day_name in target_days:
+          current_dt = datetime.combine(datetime.today(), start_t)
+          for i in range(count):
+            start_str = current_dt.strftime("%H:%M")
+            current_dt += timedelta(minutes=total_block)
+            end_str = current_dt.strftime("%H:%M")
 
-      st.session_state.schedule.extend(added_entries)
-      save_schedule(st.session_state.schedule)
-      st.success("Erfolgreich eingeplant & gespeichert!")
-      st.rerun()
+            added_entries.append({
+                "Wochentag": day_name,
+                "Uhrzeit": f"{start_str} - {end_str}",
+                "Sendung": show,
+                "Staffel": season,
+                "Ep.": current_ep,
+                "Netto": net_time,
+                "Werbung": ad_time,
+                "Gesamt": total_block,
+                "Status": plan_status,
+            })
+            current_ep += 1
+
+        st.session_state.schedule.extend(added_entries)
+        save_schedule(st.session_state.schedule)
+        st.success("Erfolgreich eingeplant & gespeichert!")
+        st.rerun()
 
 with tab_db:
   st.subheader("📚 Verifizierte Formate & Standard-Laufzeiten")
