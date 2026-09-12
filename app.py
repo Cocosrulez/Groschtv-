@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.0
-SAVE_FILE = "sendeplan_v4.0.json"
-FORMATS_FILE = "formats_v4.0.json"
+# Dateipfad für Version 4.1 (Speichert Sendeplan & bestätigte Warnungen gemeinsam)
+SAVE_FILE = "sendeplan_v4.1.json"
+FORMATS_FILE = "formats_v3.0.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.0 | Broadcast Direktion",
+    page_title="Master Control v4.1 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.0) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.1) ---
 st.markdown(
     """
     <style>
@@ -113,7 +113,7 @@ DEFAULT_SERIES_DATABASE = {
     },
 }
 
-# --- SMART FILLER DATENBANK (Kurzformate zum Lückenfüllen) ---
+# --- SMART FILLER DATENBANK ---
 FILLER_DATABASE = {
     "Sender-Trailer": {"net": 1, "ad": 0, "genre": "Promo"},
     "Programm-Vorschau": {"net": 2, "ad": 0, "genre": "Promo"},
@@ -156,9 +156,6 @@ def save_formats(db):
 if "series_db" not in st.session_state:
   st.session_state.series_db = load_formats()
 
-if "acknowledged_warnings" not in st.session_state:
-  st.session_state.acknowledged_warnings = set()
-
 
 # --- HILFSFUNKTION FÜR SLOT-HINWEISE ---
 def get_slot_grid_info(total_mins):
@@ -183,47 +180,62 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan) ---
-def load_schedule():
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.1 JSON) ---
+def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
       else ("sendeplan_v3.0.json" if os.path.exists("sendeplan_v3.0.json") else None)
   )
+  schedule = []
+  acknowledged = set()
+
   if target_file:
     try:
       with open(target_file, "r", encoding="utf-8") as f:
-        return json.load(f)
+        content = json.load(f)
+        if isinstance(content, dict):
+          schedule = content.get("schedule", [])
+          acknowledged = set(content.get("acknowledged_warnings", []))
+        elif isinstance(content, list):
+          schedule = content
     except Exception:
       pass
-  return [
-      {
-          "Wochentag": "Montag",
-          "Uhrzeit": "20:15 - 20:45",
-          "Sendung": "Hacks",
-          "Staffel": 1,
-          "Ep.": 1,
-          "Netto": 24,
-          "Werbung": 6,
-          "Gesamt": 30,
-          "Status": "Erstausstrahlung",
-      },
-      {
-          "Wochentag": "Montag",
-          "Uhrzeit": "20:45 - 21:45",
-          "Sendung": "Breaking Bad",
-          "Staffel": 1,
-          "Ep.": 1,
-          "Netto": 45,
-          "Werbung": 15,
-          "Gesamt": 60,
-          "Status": "Erstausstrahlung",
-      },
-  ]
+
+  if not schedule:
+    schedule = [
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "20:15 - 20:45",
+            "Sendung": "Hacks",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 24,
+            "Werbung": 6,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "20:45 - 21:45",
+            "Sendung": "Breaking Bad",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 45,
+            "Werbung": 15,
+            "Gesamt": 60,
+            "Status": "Erstausstrahlung",
+        },
+    ]
+  return schedule, acknowledged
 
 
-def save_schedule(data):
+def save_data(schedule, acknowledged):
   try:
+    data = {
+        "schedule": schedule,
+        "acknowledged_warnings": list(acknowledged),
+    }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
       json.dump(data, f, ensure_ascii=False, indent=4)
   except Exception as e:
@@ -231,13 +243,15 @@ def save_schedule(data):
 
 
 if "schedule" not in st.session_state:
-  st.session_state.schedule = load_schedule()
+  loaded_sched, loaded_ack = load_data()
+  st.session_state.schedule = loaded_sched
+  st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.0: Programm-Direktion")
+st.title("📡 Master Control v4.1: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.0)** — Smart Filler Lücken-Generator,"
-    " Episoden-Sperre & Kollisionsprüfung."
+    "**Broadcast-Engine (v4.1)** — Permanente Fehler-Merkmale, direkte"
+    " Schnell-Löschung (❌) & Smart Filler."
 )
 
 total_items = len(st.session_state.schedule)
@@ -256,7 +270,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.0 Smart Filler</div>
+            <div class="metric-value">v4.1 Persistent</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -290,121 +304,133 @@ with tab_matrix:
 
     st.markdown("---")
 
-    # --- DROP-UP / EXPANDIERBARER EDITOR ---
+    # --- DIREKTE SCHNELL-LÖSCHUNG (❌) ---
     with st.expander(
-        "🛠️ Sendeplatz-Feintuner & Lösch-Menü öffnen", expanded=False
+        "🗑️ Schnell-Löschung & Sendeplatz-Verwaltung (❌)", expanded=True
     ):
       st.markdown(
-          "Wähle einen Programmpunkt aus. Die Netto-Laufzeit wird im"
-          " Hintergrund format-abhängig automatisch übernommen. Passe flexibel"
-          " Startzeit und Werbezeit an."
+          "Hier kannst du Einträge direkt mit einem Klick auf **❌ Löschen**"
+          " aus dem Sendeplan entfernen."
       )
 
-      options_labels = [
-          f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} – {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
-          for i, item in enumerate(st.session_state.schedule)
-      ]
-      selected_label = st.selectbox(
-          "Programmpunkt auswählen", options_labels, key="compact_select"
-      )
-      selected_idx = options_labels.index(selected_label)
-      current_item = st.session_state.schedule[selected_idx]
+      for idx, item in enumerate(st.session_state.schedule):
+        col_q1, col_q2 = st.columns([5, 1])
+        with col_q1:
+          st.text(
+              f"#{idx+1}: {item['Wochentag']} | {item['Uhrzeit']} –"
+              f" {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
+          )
+        with col_q2:
+          if st.button("❌ Löschen", key=f"quick_del_{idx}"):
+            st.session_state.schedule.pop(idx)
+            save_data(
+                st.session_state.schedule,
+                st.session_state.acknowledged_warnings,
+            )
+            st.success("Sendeplatz entfernt!")
+            st.rerun()
 
-      current_format = st.session_state.series_db.get(current_item["Sendung"])
-      fixed_net = (
-          current_format["net"]
-          if current_format
-          else int(current_item["Netto"])
-      )
-      new_net = fixed_net
+    st.markdown("---")
 
-      try:
-        start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
-        curr_h = int(start_str_parts[0])
-        curr_m = int(start_str_parts[1])
-      except Exception:
-        curr_h, curr_m = 20, 15
-
-      col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1.5, 1, 1])
-
-      with col_e1:
-        new_time_val = st.time_input(
-            "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
+    # --- FEINTUNER EXPANDER ---
+    with st.expander("🛠️ Sendeplatz-Feintuner (Details anpassen)", expanded=False):
+      if st.session_state.schedule:
+        options_labels = [
+            f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} – {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
+            for i, item in enumerate(st.session_state.schedule)
+        ]
+        selected_label = st.selectbox(
+            "Programmpunkt auswählen", options_labels, key="compact_select"
         )
-      with col_e2:
-        new_ad = st.number_input(
-            "Werbung (Min.)",
-            min_value=0,
-            max_value=60,
-            value=int(current_item["Werbung"]),
-            key="edit_ad",
+        selected_idx = options_labels.index(selected_label)
+        current_item = st.session_state.schedule[selected_idx]
+
+        current_format = st.session_state.series_db.get(current_item["Sendung"])
+        fixed_net = (
+            current_format["net"]
+            if current_format
+            else int(current_item["Netto"])
         )
-      with col_e3:
-        current_status = current_item.get("Status", "Erstausstrahlung")
-        status_idx = (
-            STATUS_OPTIONS.index(current_status)
-            if current_status in STATUS_OPTIONS
-            else 0
-        )
-        new_status = st.selectbox(
-            "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
-        )
-      with col_e4:
-        st.markdown("<br>", unsafe_allow_html=True)
-        save_clicked = st.button(
-            "💾 Speichern", use_container_width=True, key="btn_save_slot"
-        )
-      with col_e5:
-        st.markdown("<br>", unsafe_allow_html=True)
-        delete_clicked = st.button(
-            "🗑️ Löschen", use_container_width=True, key="btn_delete_slot"
+        new_net = fixed_net
+
+        try:
+          start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
+          curr_h = int(start_str_parts[0])
+          curr_m = int(start_str_parts[1])
+        except Exception:
+          curr_h, curr_m = 20, 15
+
+        col_e1, col_e2, col_e3, col_e4 = st.columns([2, 1, 1.5, 1])
+
+        with col_e1:
+          new_time_val = st.time_input(
+              "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
+          )
+        with col_e2:
+          new_ad = st.number_input(
+              "Werbung (Min.)",
+              min_value=0,
+              max_value=60,
+              value=int(current_item["Werbung"]),
+              key="edit_ad",
+          )
+        with col_e3:
+          current_status = current_item.get("Status", "Erstausstrahlung")
+          status_idx = (
+              STATUS_OPTIONS.index(current_status)
+              if current_status in STATUS_OPTIONS
+              else 0
+          )
+          new_status = st.selectbox(
+              "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
+          )
+        with col_e4:
+          st.markdown("<br>", unsafe_allow_html=True)
+          save_clicked = st.button(
+              "💾 Speichern", use_container_width=True, key="btn_save_slot"
+          )
+
+        total_len = new_net + new_ad
+        start_dt = datetime.combine(datetime.today(), new_time_val)
+        end_dt = start_dt + timedelta(minutes=total_len)
+        new_time_str = (
+            f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
         )
 
-      total_len = new_net + new_ad
-      start_dt = datetime.combine(datetime.today(), new_time_val)
-      end_dt = start_dt + timedelta(minutes=total_len)
-      new_time_str = (
-          f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-      )
+        is_exact_slot, slot_msg = get_slot_grid_info(total_len)
+        if is_exact_slot:
+          st.info(
+              f"ℹ️ **Slot-Info:** {current_item['Sendung']} (Netto: {new_net}"
+              f" Min. fix) + Werbung ({new_ad} Min.) = **{total_len} Min."
+              f" gesamt** | {slot_msg}"
+          )
+        else:
+          st.warning(
+              f"ℹ️ **Slot-Hinweis:** {current_item['Sendung']} (Netto: {new_net}"
+              f" Min. fix) + Werbung ({new_ad} Min.) = **{total_len} Min."
+              f" gesamt** | {slot_msg}"
+          )
 
-      is_exact_slot, slot_msg = get_slot_grid_info(total_len)
-      if is_exact_slot:
-        st.info(
-            f"ℹ️ **Slot-Info:** {current_item['Sendung']} (Netto: {new_net} Min."
-            f" fix) + Werbung ({new_ad} Min.) = **{total_len} Min. gesamt** |"
-            f" {slot_msg}"
-        )
-      else:
-        st.warning(
-            f"ℹ️ **Slot-Hinweis:** {current_item['Sendung']} (Netto: {new_net}"
-            f" Min. fix) + Werbung ({new_ad} Min.) = **{total_len} Min. gesamt**"
-            f" | {slot_msg}"
-        )
+        if save_clicked:
+          st.session_state.schedule[selected_idx]["Uhrzeit"] = new_time_str
+          st.session_state.schedule[selected_idx]["Netto"] = int(new_net)
+          st.session_state.schedule[selected_idx]["Werbung"] = int(new_ad)
+          st.session_state.schedule[selected_idx]["Gesamt"] = int(total_len)
+          st.session_state.schedule[selected_idx]["Status"] = new_status
+          save_data(
+              st.session_state.schedule, st.session_state.acknowledged_warnings
+          )
+          st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
+          st.rerun()
 
-      if save_clicked:
-        st.session_state.schedule[selected_idx]["Uhrzeit"] = new_time_str
-        st.session_state.schedule[selected_idx]["Netto"] = int(new_net)
-        st.session_state.schedule[selected_idx]["Werbung"] = int(new_ad)
-        st.session_state.schedule[selected_idx]["Gesamt"] = int(total_len)
-        st.session_state.schedule[selected_idx]["Status"] = new_status
-        save_schedule(st.session_state.schedule)
-        st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
-        st.rerun()
-
-      if delete_clicked:
-        st.session_state.schedule.pop(selected_idx)
-        save_schedule(st.session_state.schedule)
-        st.success("Sendeplatz entfernt!")
-        st.rerun()
-
-    # --- STRIKTE LIVE-LOGIK & TAGESBASIERTE KOLLISIONS- & LÜCKENPRÜFUNG ---
+    # --- STRIKTE LIVE-LOGIK & PERSISTENTE WARNUNGEN ---
     st.markdown("---")
     st.subheader("🔍 Live-Logik & Format-Datenbank-Prüfung")
     errors_found = []
     slot_warnings = []
-    gap_actions = []  # Speichert Lücken für den Smart-Filler-Button
+    gap_actions = []
 
-    # 1. Format- und Einzel-Slot Checks
+    # 1. Format- und Einzel-Slot Checks mit stabilen IDs
     for idx, row in enumerate(st.session_state.schedule):
       show_name = row["Sendung"]
       format_spec = st.session_state.series_db.get(show_name) or FILLER_DATABASE.get(show_name)
@@ -442,8 +468,9 @@ with tab_matrix:
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
           )
 
+        # Stabile ID für Rasterwarnung basierend auf Inhalt statt Listenindex
         is_exact, info_text = get_slot_grid_info(expected_total)
-        warn_key = f"raster_{idx}"
+        warn_key = f"raster_{row['Wochentag']}_{row['Uhrzeit']}_{row['Sendung']}_Ep{row['Ep.']}"
         if not is_exact and warn_key not in st.session_state.acknowledged_warnings:
           slot_warnings.append((
               warn_key,
@@ -455,7 +482,7 @@ with tab_matrix:
             f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
-    # 2. Tagesbasierte chronologische Prüfung & Smart Filler Erkennung
+    # 2. Tagesbasierte Kollisions- & Lückenprüfung mit stabilen IDs
     for day in WEEKDAYS:
       day_slots = [
           (i, row)
@@ -493,7 +520,7 @@ with tab_matrix:
               )
             elif n_start > c_end:
               gap = n_start - c_end
-              gap_key = f"gap_{idx_curr}_{idx_next}"
+              gap_key = f"gap_{day}_{curr_row['Sendung']}_{curr_row['Uhrzeit']}_{next_row['Sendung']}_{next_row['Uhrzeit']}"
               if (
                   gap_key not in st.session_state.acknowledged_warnings
                   and gap > 0
@@ -502,12 +529,11 @@ with tab_matrix:
                     gap_key,
                     f"**Lücke am {day}:** Zwischen Sendeplatz #{idx_curr+1} ('{curr_row['Sendung']}') und #{idx_next+1} ('{next_row['Sendung']}') liegt eine Lücke von **{gap} Minuten** ({c_end_str} bis {n_start_str}).",
                 ))
-                # Für den Smart Filler merken: Wochentag, Startzeit, Lütkengröße
                 gap_actions.append({
                     "day": day,
                     "start_time": c_end_str,
                     "gap_mins": gap,
-                    "key": gap_key
+                    "key": gap_key,
                 })
           except Exception:
             pass
@@ -522,7 +548,7 @@ with tab_matrix:
           " zeitlich sauber eingetaktet."
       )
 
-    # Rendering Warnungen mit Bestätigungs-Button oder Smart-Filler-Aktion
+    # Rendering Warnungen mit permanentem Merken
     if slot_warnings:
       st.markdown("---")
       st.markdown("### ⚠️ Hinweise, Lücken & Raster-Abweichungen")
@@ -530,44 +556,61 @@ with tab_matrix:
         col_w1, col_w2, col_w3 = st.columns([3, 1, 1])
         with col_w1:
           st.warning(warn_text)
-        
-        # Prüfen, ob es sich um eine Lücke handelt, für die wir einen Smart Filler anbieten können
-        matching_gap = next((g for g in gap_actions if g["key"] == w_key), None)
-        
+
+        matching_gap = next(
+            (g for g in gap_actions if g["key"] == w_key), None
+        )
+
         with col_w2:
           if matching_gap:
-            # Passenden Filler anhand der Minuten aussuchen
-            available_fillers = [f for f, data in FILLER_DATABASE.items() if data["net"] <= matching_gap["gap_mins"]]
+            available_fillers = [
+                f
+                for f, data in FILLER_DATABASE.items()
+                if data["net"] <= matching_gap["gap_mins"]
+            ]
             if available_fillers:
-              chosen_filler = st.selectbox("Filler wählen", available_fillers, key=f"sel_filler_{w_key}")
+              chosen_filler = st.selectbox(
+                  "Filler wählen", available_fillers, key=f"sel_filler_{w_key}"
+              )
               if st.button("✨ Lücke füllen", key=f"fill_{w_key}"):
                 f_data = FILLER_DATABASE[chosen_filler]
-                # Neuen Filler-Slot einfügen
                 sh, sm = map(int, matching_gap["start_time"].split(":"))
                 start_dt = datetime.combine(datetime.today(), time(sh, sm))
-                end_dt = start_dt + timedelta(minutes=f_data["net"] + f_data["ad"])
-                
+                end_dt = start_dt + timedelta(
+                    minutes=f_data["net"] + f_data["ad"]
+                )
+
                 new_slot = {
                     "Wochentag": matching_gap["day"],
-                    "Uhrzeit": f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}",
+                    "Uhrzeit": (
+                        f"{start_dt.strftime('%H:%M')} -"
+                        f" {end_dt.strftime('%H:%M')}"
+                    ),
                     "Sendung": chosen_filler,
                     "Staffel": 2026,
                     "Ep.": 1,
                     "Netto": f_data["net"],
                     "Werbung": f_data["ad"],
                     "Gesamt": f_data["net"] + f_data["ad"],
-                    "Status": "Erstausstrahlung"
+                    "Status": "Erstausstrahlung",
                 }
                 st.session_state.schedule.append(new_slot)
-                save_schedule(st.session_state.schedule)
+                save_data(
+                    st.session_state.schedule,
+                    st.session_state.acknowledged_warnings,
+                )
                 st.success(f"Lücke mit '{chosen_filler}' geschlossen!")
                 st.rerun()
             else:
               st.caption("Kein kleiner Filler verfügbar")
-        
+
         with col_w3:
           if st.button("Als OK markieren", key=f"ack_{w_key}"):
             st.session_state.acknowledged_warnings.add(w_key)
+            save_data(
+                st.session_state.schedule,
+                st.session_state.acknowledged_warnings,
+            )
             st.rerun()
 
     st.markdown("---")
@@ -576,7 +619,7 @@ with tab_matrix:
       if st.button("🗑️ Sendeplan komplett zurücksetzen"):
         st.session_state.schedule = []
         st.session_state.acknowledged_warnings.clear()
-        save_schedule([])
+        save_data([], set())
         st.rerun()
     with col_a2:
       csv_export = pd.DataFrame(st.session_state.schedule).to_csv(
@@ -585,7 +628,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.0.csv",
+          "sendeplan_v4.1.csv",
           "text/csv",
       )
   else:
@@ -596,12 +639,16 @@ with tab_builder:
 
   col_b1, col_b2 = st.columns(2)
   with col_b1:
-    day_selection = st.selectbox("Wochentag / Block", DAY_OPTIONS, key="builder_day")
-    show = st.selectbox(
-        "Format / Sendung", list(st.session_state.series_db.keys()) + list(FILLER_DATABASE.keys()), key="builder_show"
+    day_selection = st.selectbox(
+        "Wochentag / Block", DAY_OPTIONS, key="builder_day"
     )
-    
-    # Prüfen ob reguläres Format oder Filler
+    show = st.selectbox(
+        "Format / Sendung",
+        list(st.session_state.series_db.keys())
+        + list(FILLER_DATABASE.keys()),
+        key="builder_show",
+    )
+
     if show in st.session_state.series_db:
       format_info = st.session_state.series_db[show]
       is_filler = False
@@ -610,7 +657,9 @@ with tab_builder:
       is_filler = True
 
     if not is_filler:
-      season = st.selectbox("Staffel", list(format_info["seasons"].keys()), key="builder_season")
+      season = st.selectbox(
+          "Staffel", list(format_info["seasons"].keys()), key="builder_season"
+      )
       existing_eps = [
           x["Ep."]
           for x in st.session_state.schedule
@@ -624,10 +673,13 @@ with tab_builder:
           max_value=10000,
           value=next_ep_suggestion,
           step=1,
-          key="builder_ep"
+          key="builder_ep",
       )
       if existing_eps:
-        st.info(f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden {sorted(list(set(existing_eps)))}")
+        st.info(
+            f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden"
+            f" {sorted(list(set(existing_eps)))}"
+        )
     else:
       season = 2026
       episode = 1
@@ -635,13 +687,16 @@ with tab_builder:
 
   with col_b2:
     start_t = st.time_input("Startzeit", time(20, 15), key="builder_time")
-    count = st.selectbox("Anzahl Folgen nacheinander", list(range(1, 6)), key="builder_count")
+    count = st.selectbox(
+        "Anzahl Folgen nacheinander", list(range(1, 6)), key="builder_count"
+    )
     plan_status = st.selectbox("Status", STATUS_OPTIONS, key="builder_status")
 
     override_lock = st.checkbox(
-        "🔄 Bereits vergebene Episoden für Neuzugänge freischalten (Überschreiben erlauben)",
+        "🔄 Bereits vergebene Episoden für Neuzugänge freischalten"
+        " (Überschreiben erlauben)",
         value=False,
-        key="builder_override"
+        key="builder_override",
     )
 
     net_time = format_info["net"]
@@ -653,7 +708,11 @@ with tab_builder:
         f" gesamt**."
     )
 
-  submitted = st.button("Sendung in den Sendeplan aufnehmen", key="builder_submit_btn", type="primary")
+  submitted = st.button(
+      "Sendung in den Sendeplan aufnehmen",
+      key="builder_submit_btn",
+      type="primary",
+  )
   if submitted:
     added_entries = []
 
@@ -704,7 +763,9 @@ with tab_builder:
             current_ep += 1
 
       st.session_state.schedule.extend(added_entries)
-      save_schedule(st.session_state.schedule)
+      save_data(
+          st.session_state.schedule, st.session_state.acknowledged_warnings
+      )
       st.success("Erfolgreich eingeplant & gespeichert!")
       st.rerun()
 
