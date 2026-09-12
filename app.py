@@ -4,17 +4,17 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.3
-SAVE_FILE = "sendeplan_v2.3.json"
+# Dateipfad für Version 2.4
+SAVE_FILE = "sendeplan_v2.4.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.3 | Broadcast Direktion",
+    page_title="Master Control v2.4 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- SAUBERES, MODERNES TV-DESIGN ---
+# --- MODERNES TV-DESIGN ---
 st.markdown(
     """
     <style>
@@ -87,9 +87,10 @@ WEEKDAYS = [
     "Samstag",
     "Sonntag",
 ]
+STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
-# --- PERSISTENZ (LADEN & SPEICHERN) ---
+# --- PERSISTENZ ---
 def load_schedule():
   if os.path.exists(SAVE_FILE):
     try:
@@ -97,7 +98,6 @@ def load_schedule():
         return json.load(f)
     except:
       pass
-  # Standardbeispiel mit absichtlichem Fehler zur Demonstration
   return [
       {
           "Wochentag": "Montag",
@@ -108,6 +108,7 @@ def load_schedule():
           "Netto": 24,
           "Werbung": 6,
           "Gesamt": 30,
+          "Status": "Erstausstrahlung",
       },
       {
           "Wochentag": "Montag",
@@ -118,6 +119,7 @@ def load_schedule():
           "Netto": 45,
           "Werbung": 15,
           "Gesamt": 60,
+          "Status": "Erstausstrahlung",
       },
   ]
 
@@ -133,11 +135,11 @@ def save_schedule(data):
 if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
-# --- HEADER & KERN-METRIKEN ---
-st.title("📡 Master Control v2.3: Programm-Direktion")
+# --- HEADER & METRIKEN ---
+st.title("📡 Master Control v2.4: Programm-Direktion")
 st.markdown(
-    "**Smart Scheduling & Touch-Dropdown Engine** — Sendeplan-Direktion mit"
-    " integrierter Live-Fehlerprüfung."
+    "**Kompakte Sende-Steuerung** — Startzeit in einem Feld, Netto/Werbung links"
+    " und erweiterter Status-Parameter."
 )
 
 total_items = len(st.session_state.schedule)
@@ -149,15 +151,15 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.3 (Aktiv)")
+  st.metric("Engine-Status", "v2.4 (Kompakt)")
 with c4:
   st.metric("Persistenz", "Live gesichert")
 
 st.markdown("---")
 
-# --- HAUPTMENÜ (TABS) ---
+# --- TABS ---
 tab_matrix, tab_builder, tab_db = st.tabs([
-    "📅 Wochen-Matrix & Dropdown-Editor",
+    "📅 Wochen-Matrix & Kompakt-Editor",
     "⚡ Schnell-Planer (Neuer Slot)",
     "📚 Format-Referenz",
 ])
@@ -166,7 +168,6 @@ with tab_matrix:
   st.subheader("Wochenübersicht & Sendeplan")
 
   if st.session_state.schedule:
-    # 1. Übersichtstabelle (Clean & Read-only)
     df = pd.DataFrame(st.session_state.schedule)
     day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
     if "Wochentag" in df.columns:
@@ -176,20 +177,23 @@ with tab_matrix:
     st.dataframe(df, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("🛠️ Sendeplatz-Feintuning per Kombi-Dropdown")
+    st.subheader("🛠️ Kompakter Sendeplatz-Feintuner")
+    st.markdown(
+        "Wähle den Sendeplatz aus und passe Startzeit, Netto, Werbung sowie den"
+        " Ausstrahlungs-Status auf einen Blick an."
+    )
 
-    # Auswahl des zu bearbeitenden Eintrags im großen Dropdown
     options_labels = [
         f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} – {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
         for i, item in enumerate(st.session_state.schedule)
     ]
     selected_label = st.selectbox(
-        "1. Programmpunkt aus der Liste auswählen", options_labels
+        "Programmpunkt auswählen", options_labels, key="compact_select"
     )
     selected_idx = options_labels.index(selected_label)
     current_item = st.session_state.schedule[selected_idx]
 
-    # Startstunde und -minute ermitteln
+    # Aktuelle Startzeit für den kompakten Time-Picker extrahieren
     try:
       start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
       curr_h = int(start_str_parts[0])
@@ -197,56 +201,63 @@ with tab_matrix:
     except:
       curr_h, curr_m = 20, 15
 
-    # 2. Die süßen kleinen Dropdown-Menüs für Stunde & Minute direkt darunter
-    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+    # Kompakte Anordnung in 5 Spalten (Startzeit in ein Feld, Netto/Werbung links, Status rechts)
+    col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1, 1, 1])
+
     with col_e1:
-      new_h = st.selectbox(
-          "Start-Stunde", list(range(0, 24)), index=curr_h, key="edit_h"
+      # Nur eine kompakte Dropdown-/Uhrzeit-Auswahl für die Startzeit
+      new_time_val = st.time_input(
+          "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
       )
     with col_e2:
-      minute_options = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
-      closest_m = min(minute_options, key=lambda x: abs(x - curr_m))
-      new_m = st.selectbox(
-          "Start-Minute",
-          minute_options,
-          index=minute_options.index(closest_m),
-          key="edit_m",
-      )
-    with col_e3:
       new_net = st.number_input(
-          "Netto-Laufzeit (Min.)",
+          "Netto (Min.)",
           min_value=1,
           max_value=300,
           value=int(current_item["Netto"]),
           key="edit_net",
       )
-    with col_e4:
+    with col_e3:
       new_ad = st.number_input(
-          "Werbezeit (Min.)",
+          "Werbung (Min.)",
           min_value=0,
           max_value=60,
           value=int(current_item["Werbung"]),
           key="edit_ad",
       )
+    with col_e4:
+      current_status = current_item.get("Status", "Erstausstrahlung")
+      status_idx = (
+          STATUS_OPTIONS.index(current_status)
+          if current_status in STATUS_OPTIONS
+          else 0
+      )
+      new_status = st.selectbox(
+          "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
+      )
+    with col_e5:
+      st.markdown("<br>", unsafe_allow_html=True)  vielen Dank für den Abstand
+      save_clicked = st.button("💾 Speichern", use_container_width=True)
 
-    # Berechne neue Zeiten
+    # Berechne neue Endzeit anhand der Gesamtlaufzeit
     total_len = new_net + new_ad
-    start_dt = datetime.combine(datetime.today(), time(new_h, new_m))
+    start_dt = datetime.combine(datetime.today(), new_time_val)
     end_dt = start_dt + timedelta(minutes=total_len)
     new_time_str = (
         f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
     )
 
-    if st.button("💾 Änderungen für diesen Sendeplatz speichern"):
+    if save_clicked:
       st.session_state.schedule[selected_idx]["Uhrzeit"] = new_time_str
       st.session_state.schedule[selected_idx]["Netto"] = int(new_net)
       st.session_state.schedule[selected_idx]["Werbung"] = int(new_ad)
       st.session_state.schedule[selected_idx]["Gesamt"] = int(total_len)
+      st.session_state.schedule[selected_idx]["Status"] = new_status
       save_schedule(st.session_state.schedule)
       st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
       st.rerun()
 
-    # --- ECHTZEIT-LOGIKPRÜFUNG (DETAILMELDUNGEN WIEDER DA) ---
+    # --- LIVE-LOGIK & KONSISTENZ-PRÜFUNG ---
     st.markdown("---")
     st.subheader("🔍 Live-Logik & Konsistenz-Prüfung")
     errors_found = []
@@ -296,7 +307,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.3.csv",
+          "sendeplan_v2.4.csv",
           "text/csv",
       )
   else:
@@ -304,7 +315,7 @@ with tab_matrix:
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  with st.form("builder_v23"):
+  with st.form("builder_v24"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
@@ -322,6 +333,8 @@ with tab_builder:
       count = st.selectbox(
           "Anzahl Folgen nacheinander", list(range(1, 6))
       )
+      plan_status = st.selectbox("Status", STATUS_OPTIONS)
+
       net_time = format_info["net"]
       ad_time = format_info["ad"]
       total_block = net_time + ad_time
@@ -347,6 +360,7 @@ with tab_builder:
             "Netto": net_time,
             "Werbung": ad_time,
             "Gesamt": total_block,
+            "Status": plan_status,
         })
       st.session_state.schedule.extend(added_entries)
       save_schedule(st.session_state.schedule)
