@@ -4,12 +4,12 @@ import streamlit as st
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(
-    page_title="Profi TV-Sender Master Control",
+    page_title="Profi TV-Sender Master Control Room",
     page_icon="📺",
     layout="wide",
 )
 
-# --- INITIALISIERUNG DER ERWEITERTEN DATENBANK ---
+# --- INITIALISIERUNG DER DATENBANK ---
 if "database" not in st.session_state:
   st.session_state.database = pd.DataFrame([
       {
@@ -24,7 +24,7 @@ if "database" not in st.session_state:
           "Titel": "Grey's Anatomy",
           "Genre": "Drama",
           "Staffeln": 20,
-          "Episoden pro Staffel": "24, 27, 25, 22, 24, 11, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 20, 23, 10",
+          "Episoden pro Staffel": "24, 27, 25, 22, 24",
           "Laufzeit (Min)": 45,
           "Status": "Aktiv",
       },
@@ -42,11 +42,12 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = pd.DataFrame(
       columns=[
           "Wochentag",
-          "Sendeplatz",
+          "Startzeit",
+          "Endzeit",
           "Format",
           "Genre",
-          "Laufzeit",
-          "Aktuelle Episode",
+          "Episode / Details",
+          "Werbeblock (Min)",
           "Hinweis",
       ]
   )
@@ -56,26 +57,83 @@ st.sidebar.title("📡 Sender Management")
 app_mode = st.sidebar.selectbox(
     "Navigation",
     [
-        "Sendeplan (Master Control)",
-        "Detailliertes Archiv & Staffeln",
-        "Neues Format anlegen",
+        "🎬 Programm-Ansicht (Das Sendeband)",
+        "⏱️ Master Control: Minutengenau planen",
+        "🗄️ Detailliertes Archiv & Staffeln",
+        "➕ Neues Format anlegen",
     ],
 )
 
 # ==========================================
-# 1. SENDEPLAN (MASTER CONTROL)
+# 1. PROGRAMM-ANSICHT (DAS SCHÖNE INTERFACE)
 # ==========================================
-if app_mode == "Sendeplan (Master Control)":
-  st.title("🎬 Master Control Room: Profi-Sendeplan")
+if app_mode == "🎬 Programm-Ansicht (Das Sendeband)":
+  st.title("📺 On-Air Programm-Übersicht")
   st.write(
-      "Plane dein Programm. Das System trackt automatisch die Episoden und"
-      " warnt bei saisonalen Konflikten."
+      "Hier siehst du deinen Sendeplan in schön – sortiert nach Sendetagen und"
+      " exakten Uhrzeiten, inklusive Werbezeiten."
   )
 
-  col1, col2 = st.columns([1, 2])
+  if not st.session_state.schedule.empty:
+    tag_filter = st.selectbox(
+        "Wähle den Sendetag",
+        [
+            "Montag",
+            "Dienstag",
+            "Mittwoch",
+            "Donnerstag",
+            "Freitag",
+            "Samstag",
+            "Sonntag",
+        ],
+    )
+
+    tages_plan = st.session_state.schedule[
+        st.session_state.schedule["Wochentag"] == tag_filter
+    ]
+
+    if not tages_plan.empty:
+      # Sortiere nach Startzeit
+      tages_plan = tages_plan.sort_values(by="Startzeit")
+
+      for index, row in tages_plan.iterrows():
+        with st.container():
+          col_zeit, col_info, col_ad = st.columns([1, 3, 1])
+          with col_zeit:
+            st.markdown(
+                f"### **{row['Startzeit']} - {row['Endzeit']}**"
+            )
+            st.caption(f"Laufzeit: {row['Genre']}")
+          with col_info:
+            st.markdown(f"#### **{row['Format']}**")
+            st.write(f"📌 *{row['Episode / Details']}*")
+            if row["Hinweis"] != "OK":
+              st.warning(row["Hinweis"])
+          with col_ad:
+            st.info(f"🟨 Werbung: {row['Werbeblock (Min)']} Min.")
+          st.divider()
+    else:
+      st.info(
+          f"Für den **{tag_filter}** ist noch kein Programm eingetragen. Nutze"
+          " das Master Control, um Slots zu füllen!"
+      )
+  else:
+    st.info("Dein Sender hat noch kein Programm. Starte im Master Control!")
+
+# ==========================================
+# 2. MASTER CONTROL: MINUTENGENAU PLANEN
+# ==========================================
+elif app_mode == "⏱️ Master Control: Minutengenau planen":
+  st.title("⏱️ Master Control Room: Minutengenaue Sendeplanung")
+  st.write(
+      "Lege Startzeiten, Endzeiten und Werbeblöcke völlig frei fest – egal ob"
+      " um 14:05 Uhr oder zur Primetime."
+  )
+
+  col1, col2 = st.columns([1, 1])
 
   with col1:
-    st.subheader("Sendeplatz belegen")
+    st.subheader("Sendung platzieren")
     wochentag = st.selectbox(
         "Wochentag",
         [
@@ -87,164 +145,133 @@ if app_mode == "Sendeplan (Master Control)":
             "Samstag",
             "Sonntag",
         ],
+        key="mc_tag",
     )
-    sendeplatz = st.selectbox(
-        "Sende-Block / Uhrzeit",
-        [
-            "Daytime (14:00)",
-            "Access Prime (18:00)",
-            "News / Info (20:00)",
-            "Primetime (20:15)",
-            "Late Prime (22:15)",
-            "Late Night (23:30)",
-        ],
-    )
+
+    c_start1, c_start2 = st.columns(2)
+    with c_start1:
+      start_std = st.selectbox(
+          "Start Stunde", [str(i).zfill(2) for i in range(24)], index=20
+      )
+    with c_start2:
+      start_min = st.selectbox(
+          "Start Minute", ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "01", "02", "03", "04", "06", "07", "08", "09", "11", "12", "13", "14", "16", "17", "18", "19", "21", "22", "23", "24", "26", "27", "28", "29", "31", "32", "33", "34", "36", "37", "38", "39", "41", "42", "43", "44", "46", "47", "48", "49", "51", "52", "53", "54", "56", "57", "58", "59"]
+      )
+
+    c_end1, c_end2 = st.columns(2)
+    with c_end1:
+      end_std = st.selectbox(
+          "Ende Stunde", [str(i).zfill(2) for i in range(24)], index=21
+      )
+    with c_end2:
+      end_min = st.selectbox(
+          "Ende Minute", ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "01", "02", "03", "04", "06", "07", "08", "09", "11", "12", "13", "14", "16", "17", "18", "19", "21", "22", "23", "24", "26", "27", "28", "29", "31", "32", "33", "34", "36", "37", "38", "39", "41", "42", "43", "44", "46", "47", "48", "49", "51", "52", "53", "54", "56", "57", "58", "59"], index=2
+      )
 
     aktive_formate = st.session_state.database["Titel"].tolist()
-    ausgewähltes_format = st.selectbox(
-        "Format auswählen", aktive_formate if aktive_formate else ["Keine"]
+    format_wahl = st.selectbox(
+        "Format", aktive_formate if aktive_formate else ["Keine"]
     )
 
-    # Zusatzeinstellungen für die Episode
     staffel_wahl = st.number_input(
-        "Welche Staffel?", min_value=1, max_value=30, value=1
+        "Staffel", min_value=1, max_value=30, value=1
     )
-    episoden_wahl = st.number_input(
-        "Welche Episodennummer?", min_value=1, max_value=50, value=1
+    episode_wahl = st.number_input(
+        "Episode", min_value=1, max_value=50, value=1
     )
-
-    special_typ = st.selectbox(
-        "Special / Feiertagsepisode?",
-        ["Kein Special", "🎃 Halloween-Special", "🎄 Weihnachts-Special"],
+    werbung_min = st.number_input(
+        "Werbeblock-Anteil (Minuten)", min_value=0, max_value=30, value=4
     )
 
-    if st.button("Ins Programm nehmen"):
-      if ausgewähltes_format != "Keine":
+    special_wahl = st.selectbox(
+        "Special Status", ["Regulär", "🎃 Halloween", "🎄 Weihnachten"]
+    )
+
+    if st.button("Ins Programm aufnehmen"):
+      if format_wahl != "Keine":
         format_row = st.session_state.database[
-            st.session_state.database["Titel"] == ausgewähltes_format
+            st.session_state.database["Titel"] == format_wahl
         ].iloc[0]
 
-        # Logik-Check: Monat vs. Special
+        start_str = f"{start_std}:{start_min}"
+        end_str = f"{end_std}:{end_min}"
+
         aktueller_monat = datetime.datetime.now().month
         hinweis = "OK"
+        if "Weihnachten" in special_wahl and aktueller_monat not in [11, 12]:
+          hinweis = "⚠️ Weihnachts-Special im Sommer!"
+        elif "Halloween" in special_wahl and aktueller_monat != 10:
+          hinweis = "⚠️ Halloween-Special außerhalb des Oktobers!"
 
-        if "Weihnachts" in special_typ and aktueller_monat not in [11, 12]:
-          hinweis = f"⚠️ Achtung: Weihnachts-Special im Monat {aktueller_monat} (Sommer/Frühling)!"
-        elif "Halloween" in special_typ and aktueller_monat != 10:
-          hinweis = (
-              f"⚠️ Achtung: Halloween-Special im Monat {aktueller_monat}!"
-          )
-
-        ep_anzeige = f"Staffel {staffel_wahl}, Folge {episoden_wahl}"
-        if special_typ != "Kein Special":
-          ep_anzeige += f" ({special_typ})"
+        ep_details = (
+            f"Staffel {staffel_wahl}, Folge {episode_wahl} ({special_wahl})"
+        )
 
         neuer_eintrag = pd.DataFrame({
             "Wochentag": [wochentag],
-            "Sendeplatz": [sendeplatz],
-            "Format": [ausgewähltes_format],
+            "Startzeit": [start_str],
+            "Endzeit": [end_str],
+            "Format": [format_wahl],
             "Genre": [format_row["Genre"]],
-            "Laufzeit": [format_row["Laufzeit (Min)"]],
-            "Aktuelle Episode": [ep_anzeige],
+            "Episode / Details": [ep_details],
+            "Werbeblock (Min)": [werbung_min],
             "Hinweis": [hinweis],
         })
         st.session_state.schedule = pd.concat(
             [st.session_state.schedule, neuer_eintrag], ignore_index=True
         )
-        st.success(f"'{ausgewähltes_format}' ({ep_anzeige}) eingeplant!")
+        st.success(
+            f"'{format_wahl}' erfolgreich von {start_str} bis {end_str} Uhr"
+            " eingeplant!"
+        )
 
   with col2:
-    st.subheader("Aktueller Programm-Überblick")
+    st.subheader("Aktuelle Sendeplan-Tabelle")
     if not st.session_state.schedule.empty:
-      filter_tag = st.selectbox(
-          "Ansicht für Tag filtern",
-          [
-              "Alle",
-              "Montag",
-              "Dienstag",
-              "Mittwoch",
-              "Donnerstag",
-              "Freitag",
-              "Samstag",
-              "Sonntag",
-          ],
-      )
-
-      display_df = st.session_state.schedule
-      if filter_tag != "Alle":
-        display_df = display_df[display_df["Wochentag"] == filter_tag]
-
-      st.dataframe(display_df, use_container_width=True)
-
-      if st.button("Sendeplan komplett zurücksetzen"):
+      st.dataframe(st.session_state.schedule, use_container_width=True)
+      if st.button("Gesamten Sendeplan löschen"):
         st.session_state.schedule = pd.DataFrame(
             columns=[
                 "Wochentag",
-                "Sendeplatz",
+                "Startzeit",
+                "Endzeit",
                 "Format",
                 "Genre",
-                "Laufzeit",
-                "Aktuelle Episode",
+                "Episode / Details",
+                "Werbeblock (Min)",
                 "Hinweis",
             ]
         )
         st.rerun()
     else:
-      st.info("Dein Sendeplan ist noch leer.")
+      st.info("Noch keine Sendungen im Plan.")
 
 # ==========================================
-# 2. DETAILLIERTES ARCHIV & STAFFELN
+# 3. ARCHIV & 4. NEUES FORMAT
 # ==========================================
-elif app_mode == "Detailliertes Archiv & Staffeln":
-  st.title("🗄️ Detailliertes Sender-Archiv")
-  st.write(
-      "Hier siehst du alle Formate mit ihren flexiblen Staffellängen und"
-      " Episodenstrukturen. Du kannst die Tabelle direkt anpassen."
-  )
-
+elif app_mode == "🗄️ Detailliertes Archiv & Staffeln":
+  st.title("🗄️ Sender-Archiv & Staffeln")
   edited_df = st.data_editor(
       st.session_state.database, use_container_width=True, num_rows="dynamic"
   )
   st.session_state.database = edited_df
 
-# ==========================================
-# 3. NEUES FORMAT ANLEGEN
-# ==========================================
-elif app_mode == "Neues Format anlegen":
-  st.title("➕ Neues Format mit Episodenstruktur anlegen")
-
-  with st.form("neues_format_form"):
+elif app_mode == "➕ Neues Format anlegen":
+  st.title("➕ Neues Format anlegen")
+  with st.form("format_neu"):
     titel = st.text_input("Titel der Serie / Sendung")
     genre = st.selectbox(
         "Genre",
-        [
-            "Comedy",
-            "Drama",
-            "Krimi",
-            "News",
-            "Show / Quiz",
-            "Doku",
-            "Reality",
-            "Film",
-        ],
+        ["Comedy", "Drama", "Krimi", "News", "Show / Quiz", "Reality", "Film"],
     )
-    staffeln = st.number_input(
-        "Anzahl Staffeln gesamt", min_value=1, max_value=50, value=1
-    )
+    staffeln = st.number_input("Anzahl Staffeln", 1, 50, 1)
     ep_pro_staffel = st.text_input(
-        "Episoden pro Staffel (kommagetrennt, z.B. 22, 22, 20)",
-        value="10, 10",
+        "Episoden pro Staffel (z.B. 22, 20, 18)", "10, 10"
     )
-    laufzeit = st.number_input(
-        "Laufzeit pro Folge (Minuten)", min_value=5, max_value=240, value=30
-    )
-    status = st.selectbox(
-        "Status / Ausstrahlung",
-        ["Aktiv", "Täglich (Daily)", "Pausiert", "Abgeschlossen", "Abgesetzt"],
-    )
+    laufzeit = st.number_input("Standard-Laufzeit (Min)", 5, 240, 30)
+    status = st.selectbox("Status", ["Aktiv", "Pausiert", "Abgeschlossen"])
 
-    submitted = st.form_submit_button("Format ins Archiv aufnehmen")
-    if submitted:
+    if st.form_submit_button("Speichern"):
       if titel:
         neue_zeile = pd.DataFrame({
             "Titel": [titel],
@@ -257,6 +284,4 @@ elif app_mode == "Neues Format anlegen":
         st.session_state.database = pd.concat(
             [st.session_state.database, neue_zeile], ignore_index=True
         )
-        st.success(f"Format '{titel}' erfolgreich mit Episodenstruktur angelegt!")
-      else:
-        st.error("Bitte gib einen Titel ein.")
+        st.success(f"'{titel}' wurde dem Archiv hinzugefügt!")
