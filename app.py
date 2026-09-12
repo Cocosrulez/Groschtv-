@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="TV-Sendeplan Generator & Master Control",
+    page_title="TV-Sender Master Control & Programmdirektion",
     page_icon="📺",
     layout="wide"
 )
@@ -47,7 +47,6 @@ SERIES_DATABASE = {
         "default_net": 88,
         "default_ad": 15
     },
-    # Weitere Formate für den echten Senderbetrieb
     "The Big Bang Theory": {
         "genre": "Sitcom",
         "seasons": {1: 17, 2: 23, 3: 23, 4: 24},
@@ -67,12 +66,11 @@ if "master_schedule" not in st.session_state:
     st.session_state.master_schedule = []
 
 # --- UI HEADER ---
-st.title("📺 TV-Sendeplan & Programmier-Konsole")
-st.markdown("Erstelle deinen Programmschema-Sendeplan minutengenau, mit wiederkehrenden Slots (Mo–Fr) und exakter Werbeintegration.")
+st.title("📺 Programmdirektion: Master Control & Sendeplan")
+st.markdown("Präziser Aufbau des Programmschemas mit Minuten- und Werbeplanung, flexibler Einzelbearbeitung und Validierung.")
 st.markdown("---")
 
-# Tabs für schnelle Bedienung
-tab_builder, tab_view, tab_database = st.tabs(["⚡ Sendeplan bauen", "📋 Programmschema & Ansicht", "📚 Serien-Datenbank"])
+tab_builder, tab_view, tab_database = st.tabs(["⚡ Sendeplan bauen", "📋 Programmschema & Bearbeitung", "📚 Serien-Datenbank"])
 
 with tab_builder:
     st.subheader("Sendung / Block minutengenau einplanen")
@@ -83,7 +81,6 @@ with tab_builder:
         with col1:
             show_name = st.selectbox("Sendung auswählen", list(SERIES_DATABASE.keys()))
             
-            # Automatische Vorauswahl basierend auf Serie
             default_net = SERIES_DATABASE[show_name]["default_net"]
             default_ad = SERIES_DATABASE[show_name]["default_ad"]
             
@@ -95,7 +92,7 @@ with tab_builder:
 
         with col2:
             day_option = st.selectbox(
-                "Wochentag / Muster", 
+                "Wochentag / Sende-Muster", 
                 ["Einmalig (Datum wählbar)", "Montag bis Freitag (Mo-Fr Serie)", "Samstag", "Sonntag", "Jeden Tag"]
             )
             
@@ -104,7 +101,6 @@ with tab_builder:
             else:
                 schedule_date = None
                 
-            # Minutengenaue Zeiten
             col_t1, col_t2 = st.columns(2)
             with col_t1:
                 start_time = st.time_input("Startzeit", time(20, 15))
@@ -139,34 +135,44 @@ with tab_builder:
             st.success(f"Erfolgreich hinzugefügt: {show_name} (St. {season_num}, Ep. {episode_num}) um {start_time.strftime('%H:%M')} Uhr!")
 
 with tab_view:
-    st.subheader("Aktueller Programmschema-Sendeplan")
+    st.subheader("Programmschema verwalten & bearbeiten")
     
     if len(st.session_state.master_schedule) > 0:
+        # Als Tabelle anzeigen
         df_plan = pd.DataFrame(st.session_state.master_schedule)
-        
-        # Schöne Tabelle ausgeben
         st.dataframe(df_plan, use_container_width=True)
         
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
-            if st.button("Sendeplan komplett leeren"):
+        st.markdown("### Einzelnen Eintrag löschen")
+        # Auswahlbox für Zeilen zum gezielten Löschen
+        row_options = [f"[{i}] {row['Zeit']} - {row['Sendung']} (Staffel {row['Staffel']}, Ep. {row['Episode']})" for i, row in enumerate(st.session_state.master_schedule)]
+        selected_to_delete = st.selectbox("Wähle den Programmpunkt aus, der entfernt werden soll:", row_options)
+        
+        col_del1, col_del2 = st.columns(2)
+        with col_del1:
+            if st.button("Ausgewählten Eintrag löschen"):
+                index_to_remove = row_options.index(selected_to_delete)
+                removed_item = st.session_state.master_schedule.pop(index_to_remove)
+                st.success(f"Eintrag gelöscht: {removed_item['Sendung']} ({removed_item['Zeit']})")
+                st.rerun()
+        
+        with col_del2:
+            if st.button("Kompletten Sendeplan leeren"):
                 st.session_state.master_schedule = []
                 st.rerun()
-        with col_act2:
-            csv_data = df_plan.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Sendeplan als CSV herunterladen",
-                data=csv_data,
-                file_name="tv_sendeplan.csv",
-                mime="text/csv",
-            )
+                
+        st.markdown("---")
+        csv_data = df_plan.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Sendeplan als CSV herunterladen",
+            data=csv_data,
+            file_name="tv_sendeplan.csv",
+            mime="text/csv",
+        )
     else:
-        st.info("Dein Sendeplan ist aktuell noch leer. Nutze den Tab 'Sendeplan bauen', um Einträge hinzuzufügen.")
+        st.info("Dein Sendeplan ist aktuell leer. Füge im Tab 'Sendeplan bauen' Einträge hinzu.")
 
 with tab_database:
     st.subheader("Hinterlegte Serien & Validierungsregeln")
-    st.markdown("Hier siehst du alle verfügbaren Formate mit ihren echten Staffeln und maximalen Episoden, damit keine falschen Eingaben passieren.")
-    
     db_list = []
     for s_name, s_info in SERIES_DATABASE.items():
         db_list.append({
