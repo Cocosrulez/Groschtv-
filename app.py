@@ -4,25 +4,23 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.1
-SAVE_FILE = "sendeplan_v2.1.json"
+# Dateipfad für Version 2.2
+SAVE_FILE = "sendeplan_v2.2.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.1 | Broadcast Direktion",
+    page_title="Master Control v2.2 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES TV-DESIGN (CLEAN & PROFESSIONAL) ---
+# --- SAUBERES, MODERNES TV-DESIGN ---
 st.markdown(
     """
     <style>
     .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 14px; border-radius: 8px; border-left: 4px solid #0066cc; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .stMetric { background-color: #ffffff; padding: 12px; border-radius: 8px; border-left: 4px solid #0066cc; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .block-container { padding-top: 2rem; }
-    .error-card { background-color: #fff3f3; border-left: 5px solid #d9534f; padding: 12px 16px; border-radius: 6px; margin-bottom: 10px; }
-    .success-card { background-color: #f0f9f4; border-left: 5px solid #28a745; padding: 12px 16px; border-radius: 6px; margin-bottom: 10px; }
     </style>
 """,
     unsafe_allow_html=True,
@@ -99,7 +97,7 @@ def load_schedule():
         return json.load(f)
     except:
       pass
-  # Beispiel mit absichtlichem Fehler (Hacks: 45 Min Fenster bei 30 Min Laufzeit), um die Live-Engine zu demonstrieren
+  # Standardbeispiel mit absichtlichem Fehler (Hacks: 45 Min Fenster bei 30 Min Laufzeit)
   return [
       {
           "Wochentag": "Montag",
@@ -136,10 +134,10 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
 # --- HEADER & KERN-METRIKEN ---
-st.title("📡 Master Control v2.1: Programm-Direktion")
+st.title("📡 Master Control v2.2: Programm-Direktion")
 st.markdown(
-    "**Smart Scheduling & Live Validation Engine** — Automatische"
-    " Laufzeit-Prüfung, Werbe-Kontrolle und sofortige Persistenz."
+    "**Smart Scheduling & Touch-Dropdown Engine** — Präzise Steuerung ohne"
+    " umständliche Tastatureingaben."
 )
 
 total_items = len(st.session_state.schedule)
@@ -151,97 +149,144 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.1 (Live-Prüfung aktiv)")
+  st.metric("Engine-Status", "v2.2 (Aktiv)")
 with c4:
-  st.metric("Persistenz", "Automatisch gesichert")
+  st.metric("Persistenz", "Live gesichert")
 
 st.markdown("---")
 
 # --- HAUPTMENÜ (TABS) ---
 tab_matrix, tab_builder, tab_db = st.tabs([
-    "📅 Wochen-Matrix & Live-Fehlerprüfung",
+    "📅 Wochen-Matrix & Dropdown-Editor",
     "⚡ Schnell-Planer (Neuer Slot)",
     "📚 Format-Referenz",
 ])
 
 with tab_matrix:
-  st.subheader("Wochenübersicht & Interaktive Fehlerkorrektur")
-  st.markdown(
-      "Passe Zeiten, Netto- oder Werbezeiten direkt in der Tabelle an. Das"
-      " System berechnet die Gesamtlaufzeit und prüft auf Logikfehler in"
-      " Echtzeit!"
-  )
+  st.subheader("Wochenübersicht & Sendeplan")
 
   if st.session_state.schedule:
+    # Zeige reine Übersichtstabelle (Clean & Read-only, damit keine unschönen Tastatur-Popups auf Tablets stören)
     df = pd.DataFrame(st.session_state.schedule)
-
-    # Wochentag-Sortierung
     day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
     if "Wochentag" in df.columns:
       df["_sort"] = df["Wochentag"].map(day_sorting).fillna(9)
       df = df.sort_values(by=["_sort", "Uhrzeit"]).drop(columns=["_sort"])
 
-    # Interaktiver Data Editor
-    edited_df = st.data_editor(
-        df, use_container_width=True, key="v21_editor", num_rows="dynamic"
+    st.dataframe(df, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader(
+        "🛠️ Sendeplatz-Feintuning (Stunden & Minuten per Dropdown anpassen)"
+    )
+    st.markdown(
+        "Wähle unten einen Eintrag aus der Liste aus und korrigiere Startzeit,"
+        " Netto- oder Werbezeit ganz bequem über Dropdowns."
     )
 
-    # Automatische Neuberechnung der Spalten bei Tabellen-Änderung
-    processed_records = []
-    for idx, row in edited_df.iterrows():
-      r_dict = row.to_dict()
-      # Automatische Gesamt-Kalkulation: Netto + Werbung = Gesamt
-      try:
-        net = int(r_dict.get("Netto", 0))
-        ad = int(r_dict.get("Werbung", 0))
-        r_dict["Gesamt"] = net + ad
-      except:
-        pass
-      processed_records.append(r_dict)
+    # Auswahl des zu bearbeitenden Eintrags
+    options_labels = [
+        f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} – {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
+        for i, item in enumerate(st.session_state.schedule)
+    ]
+    selected_label = st.selectbox(
+        "Programmpunkt für Bearbeitung auswählen", options_labels
+    )
+    selected_idx = options_labels.index(selected_label)
+    current_item = st.session_state.schedule[selected_idx]
 
-    # Bei Änderungen sofort speichern und aktualisieren
-    if processed_records != st.session_state.schedule:
-      st.session_state.schedule = processed_records
+    # Bestimme aktuelle Startstunde und -minute aus dem String "HH:MM - HH:MM"
+    try:
+      start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
+      curr_h = int(start_str_parts[0])
+      curr_m = int(start_str_parts[1])
+    except:
+      curr_h, curr_m = 20, 15
+
+    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+    with col_e1:
+      new_h = st.selectbox(
+          "Start-Stunde", list(range(0, 24)), index=curr_h, key="edit_h"
+      )
+    with col_e2:
+      # Nimm die nächstgelegene 5-Minuten-Raster-Option oder Standard
+      minute_options = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+      closest_m = min(minute_options, key=lambda x: abs(x - curr_m))
+      new_m = st.selectbox(
+          "Start-Minute",
+          minute_options,
+          index=minute_options.index(closest_m),
+          key="edit_m",
+      )
+    with col_e3:
+      new_net = st.number_input(
+          "Netto-Laufzeit (Min.)",
+          min_value=1,
+          max_value=300,
+          value=int(current_item["Netto"]),
+          key="edit_net",
+      )
+    with col_e4:
+      new_ad = st.number_input(
+          "Werbezeit (Min.)",
+          min_value=0,
+          max_value=60,
+          value=int(current_item["Werbung"]),
+          key="edit_ad",
+      )
+
+    # Berechne neue Zeiten
+    total_len = new_net + new_ad
+    start_dt = datetime.combine(datetime.today(), time(new_h, new_m))
+    end_dt = start_dt + timedelta(minutes=total_len)
+    new_time_str = (
+        f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+    )
+
+    if st.button("💾 Änderungen für diesen Sendeplatz speichern"):
+      st.session_state.schedule[selected_idx]["Uhrzeit"] = new_time_str
+      st.session_state.schedule[selected_idx]["Netto"] = int(new_net)
+      st.session_state.schedule[selected_idx]["Werbung"] = int(new_ad)
+      st.session_state.schedule[selected_idx]["Gesamt"] = int(total_len)
       save_schedule(st.session_state.schedule)
+      st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
       st.rerun()
 
-    # --- ELEGANTE LIVE-LOGIKPRÜFUNG (FEHLER-DIREKTION) ---
-    st.markdown("### 🔍 Live-Logik & Konsistenz-Prüfung")
+    # --- ECHTZEIT-LOGIKPRÜFUNG (ANSPRECHEND & SAUBER) ---
+    st.markdown("---")
+    st.subheader("🔍 Live-Logik & Konsistenz-Prüfung")
     errors_found = []
 
-    for idx, row in pd.DataFrame(st.session_state.schedule).iterrows():
+    for idx, row in enumerate(st.session_state.schedule):
       try:
-        # Prüfe Zeitfenster-Länge vs. Gesamt-Laufzeit (Netto + Werbung)
-        time_parts = row["Uhrzeit"].split(" - ")
-        start_parts = list(map(int, time_parts[0].split(":")))
-        end_parts = list(map(int, time_parts[1].split(":")))
-        slot_mins = (end_parts[0] * 60 + end_parts[1]) - (
-            start_parts[0] * 60 + start_parts[1]
+        t_parts = row["Uhrzeit"].split(" - ")
+        s_parts = list(map(int, t_parts[0].split(":")))
+        e_parts = list(map(int, t_parts[1].split(":")))
+        slot_mins = (e_parts[0] * 60 + e_parts[1]) - (
+            s_parts[0] * 60 + s_parts[1]
         )
 
         expected_total = int(row["Netto"]) + int(row["Werbung"])
 
         if slot_mins != expected_total:
+          errors_found.goto = True  # marker
           errors_found.append(
-              f"⚠️ **Sendeplatz-Fehler bei '{row['Sendung']}' (Staffel {row['Staffel']}, Ep. {row['Ep.']}) am {row['Wochentag']} ({row['Uhrzeit']}):** "
-              f"Das Zeitfenster ist **{slot_mins} Minuten** lang, aber die Format-Laufzeit (Netto {row['Netto']} Min. + Werbung {row['Werbung']} Min.) beträgt exakt **{expected_total} Minuten**! "
-              f"*(Tipp: Korrigiere oben in der Tabelle die Uhrzeit oder passe die Werbe-/Nettozeit an, um den Fehler zu beheben)*"
+              f"**Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – {row['Sendung']}:** "
+              f"Das eingestellte Zeitfenster ist **{slot_mins} Min.** lang, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben exakt **{expected_total} Min.**! "
+              f"*(Beispiel: Wenn du z.B. Werbung von 6 auf 8 Min. erhöhst, stimmt das Zeitfenster nicht mehr überein)*"
           )
       except Exception:
         errors_found.append(
-            f"⚠️ **Formatierungsfehler** in Zeile {idx+1}: Ungültiges"
-            " Zeitformat (Bitte 'HH:MM - HH:MM' nutzen)."
+            f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
     if errors_found:
       for err in errors_found:
-        st.markdown(f'<div class="error-card">{err}</div>', unsafe_allow_html=True)
+        st.error(f"⚠️ {err}")
     else:
-      st.markdown(
-          '<div class="success-card">✅ **Alles perfekt!** Sendezeiten und'
-          " Laufzeiten stimmen absolut überein. Keine Logikfehler im Schema."
-          "</div>",
-          unsafe_allow_html=True,
+      st.success(
+          "✅ **Alles perfekt!** Alle Sendezeiten und Laufzeiten (Netto +"
+          " Werbung) stimmen absolut überein. Keine Logikfehler."
       )
 
     st.markdown("---")
@@ -252,99 +297,79 @@ with tab_matrix:
         save_schedule([])
         st.rerun()
     with col_a2:
-      csv_export = pd.DataFrame(st.session_state.schedule).to_csv(index=False).encode("utf-8")
+      csv_export = pd.DataFrame(st.session_state.schedule).to_csv(
+          index=False
+      ).encode("utf-8")
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.1.csv",
+          "sendeplan_v2.2.csv",
           "text/csv",
       )
   else:
-    st.info("Der Sendeplan ist aktuell leer. Füge im Tab 'Schnell-Planer' neue Formate hinzu.")
+    st.info("Der Sendeplan ist aktuell leer.")
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  st.markdown(
-      "Wähle Wochentag, Format und Startzeit. Das System berechnet die"
-      " passenden Blöcke automatisch vor."
-  )
-
-  with st.form("builder_v21"):
+  with st.form("builder_v22"):
     col_b1, col_b2 = st.columns(2)
-
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
       show = st.selectbox("Format / Sendung", list(SERIES_DATABASE.keys()))
-
       format_info = SERIES_DATABASE[show]
-      seasons = list(format_info["seasons"].keys())
-      season = st.selectbox("Staffel", seasons)
-
-      max_ep = format_info["seasons"][season]
-      episode = st.selectbox(
-          "Start-Episodennummer", list(range(1, max_ep + 1))
+      season = st.selectbox(
+          "Staffel", list(format_info["seasons"].keys())
       )
-
+      episode = st.selectbox(
+          "Start-Episodennummer",
+          list(range(1, format_info["seasons"][season] + 1)),
+      )
     with col_b2:
       start_t = st.time_input("Startzeit", time(20, 15))
       count = st.selectbox(
           "Anzahl Folgen nacheinander", list(range(1, 6))
       )
-
       net_time = format_info["net"]
       ad_time = format_info["ad"]
       total_block = net_time + ad_time
-
       st.markdown(
           f"💡 **Voreinstellung:** {net_time} Min. Netto + {ad_time} Min."
-          f" Werbung = **{total_block} Min. gesamt pro Folge**."
+          f" Werbung = **{total_block} Min. gesamt**."
       )
 
     submitted = st.form_submit_button("Sendung in den Sendeplan aufnehmen")
-
     if submitted:
-      current_time_dt = datetime.combine(datetime.today(), start_t)
+      current_dt = datetime.combine(datetime.today(), start_t)
       added_entries = []
-
       for i in range(count):
-        ep_num = episode + i
-        start_str = current_time_dt.strftime("%H:%M")
-        current_time_dt += timedelta(minutes=total_block)
-        end_str = current_time_dt.strftime("%H:%M")
-
-        entry = {
+        start_str = current_dt.strftime("%H:%M")
+        current_dt += timedelta(minutes=total_block)
+        end_str = current_dt.strftime("%H:%M")
+        added_entries.append({
             "Wochentag": day,
             "Uhrzeit": f"{start_str} - {end_str}",
             "Sendung": show,
             "Staffel": season,
-            "Ep.": ep_num,
+            "Ep.": episode + i,
             "Netto": net_time,
             "Werbung": ad_time,
             "Gesamt": total_block,
-        }
-        added_entries.append(entry)
-
+        })
       st.session_state.schedule.extend(added_entries)
       save_schedule(st.session_state.schedule)
-      st.success(
-          f"Erfolgreich {count} Folge(n) für {day} fehlerfrei eingeplant &"
-          " gespeichert!"
-      )
+      st.success("Erfolgreich eingeplant & gespeichert!")
       st.rerun()
 
 with tab_db:
   st.subheader("Verifizierte Formate & Standard-Laufzeiten")
-  st.markdown(
-      "Referenztabelle aller hinterlegten Serien mit Netto- und Werbezeiten."
-  )
-
-  db_rows = []
-  for k, v in SERIES_DATABASE.items():
-    db_rows.append({
-        "Format / Sendung": k,
-        "Genre": v["genre"],
-        "Standard Netto (Min.)": v["net"],
-        "Standard Werbung (Min.)": v["ad"],
-        "Gesamt-Laufzeit (Min.)": v["net"] + v["ad"],
-    })
+  db_rows = [
+      {
+          "Format": k,
+          "Genre": v["genre"],
+          "Netto (Min.)": v["net"],
+          "Werbung (Min.)": v["ad"],
+          "Gesamt (Min.)": v["net"] + v["ad"],
+      }
+      for k, v in SERIES_DATABASE.items()
+  ]
   st.table(pd.DataFrame(db_rows))
