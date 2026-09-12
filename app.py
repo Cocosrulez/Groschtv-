@@ -4,12 +4,12 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 2.5
-SAVE_FILE = "sendeplan_v2.5.json"
+# Dateipfad für Version 2.6
+SAVE_FILE = "sendeplan_v2.6.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v2.5 | Broadcast Direktion",
+    page_title="Master Control v2.6 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
@@ -136,10 +136,10 @@ if "schedule" not in st.session_state:
   st.session_state.schedule = load_schedule()
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v2.5: Programm-Direktion")
+st.title("📡 Master Control v2.6: Programm-Direktion")
 st.markdown(
-    "**Kompakte Sende-Steuerung** — Startzeit in einem Feld, Netto/Werbung links"
-    " und erweiterter Status-Parameter."
+    "**Erweiterte Live-Logik Engine (v2.6)** — Strikter Abgleich von Netto- und"
+    " Werbezeiten gegen die Serien-Datenbank."
 )
 
 total_items = len(st.session_state.schedule)
@@ -151,7 +151,7 @@ with c1:
 with c2:
   st.metric("Gesamt-Sendezeit", f"{total_mins} Min.")
 with c3:
-  st.metric("Engine-Status", "v2.5 (Aktiv)")
+  st.metric("Engine-Status", "v2.6 (Strikter DB-Check)")
 with c4:
   st.metric("Persistenz", "Live gesichert")
 
@@ -200,7 +200,6 @@ with tab_matrix:
     except:
       curr_h, curr_m = 20, 15
 
-    # Kompakte Anordnung in 5 Spalten
     col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns([2, 1, 1, 1, 1])
 
     with col_e1:
@@ -234,9 +233,7 @@ with tab_matrix:
           "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
       )
     with col_e5:
-      st.markdown(
-          "<br>", unsafe_allow_html=True
-      )  # Korrigierter HTML-Abstand mit Kommentar
+      st.markdown("<br>", unsafe_allow_html=True)
       save_clicked = st.button("💾 Speichern", use_container_width=True)
 
     total_len = new_net + new_ad
@@ -256,13 +253,26 @@ with tab_matrix:
       st.success("Erfolgreich aktualisiert & dauerhaft gespeichert!")
       st.rerun()
 
-    # --- LIVE-LOGIK & KONSISTENZ-PRÜFUNG ---
+    # --- STRIKTE LIVE-LOGIK & KONSISTENZ-PRÜFUNG (VERSION 2.6) ---
     st.markdown("---")
-    st.subheader("🔍 Live-Logik & Konsistenz-Prüfung")
+    st.subheader("🔍 Live-Logik & Format-Datenbank-Prüfung")
     errors_found = []
 
     for idx, row in enumerate(st.session_state.schedule):
+      show_name = row["Sendung"]
+      format_spec = SERIES_DATABASE.get(show_name)
+
       try:
+        # 1. Check: Überschreitet das Netto das Maximum des Formats laut Datenbank?
+        if format_spec:
+          max_allowed_net = format_spec["net"]
+          if int(row["Netto"]) > max_allowed_net:
+            errors_found.append(
+                f"**Format-Überschreitung bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – Format '{show_name}':** "
+                f"Die Nettolaufzeit ist mit **{row['Netto']} Min.** eingetragen, aber das Format erlaubt laut Datenbank maximal **{max_allowed_net} Min.** Netto!"
+            )
+
+        # 2. Check: Stimmt das Zeitfenster mit Netto + Werbung überein?
         t_parts = row["Uhrzeit"].split(" - ")
         s_parts = list(map(int, t_parts[0].split(":")))
         e_parts = list(map(int, t_parts[1].split(":")))
@@ -274,9 +284,8 @@ with tab_matrix:
 
         if slot_mins != expected_total:
           errors_found.append(
-              f"**Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – Format '{row['Sendung']}':** "
-              f"Das Zeitfenster ist **{slot_mins} Min.** lang, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben exakt **{expected_total} Min.**! "
-              f"*(Hinweis: Wenn du z.B. die Werbung von 6 auf 8 Minuten änderst, stimmt das Zeitfenster nicht mehr überein)*"
+              f"**Zeitfenster-Konflikt bei Sendeplatz #{idx+1} ({row['Wochentag']}, {row['Uhrzeit']}) – Format '{show_name}':** "
+              f"Das ausgewählte Zeitfenster ist **{slot_mins} Min.** lang, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben zusammen **{expected_total} Min.**!"
           )
       except Exception:
         errors_found.append(
@@ -288,8 +297,8 @@ with tab_matrix:
         st.error(f"⚠️ {err}")
     else:
       st.success(
-          "✅ **Alles perfekt!** Alle Sendezeiten und Laufzeiten stimmen"
-          " überein. Keine Logikfehler vorhanden."
+          "✅ **Alles perfekt!** Alle Laufzeiten entsprechen den"
+          " Datenbank-Limits und die Zeitfenster stimmen exakt überein."
       )
 
     st.markdown("---")
@@ -306,7 +315,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v2.5.csv",
+          "sendeplan_v2.6.csv",
           "text/csv",
       )
   else:
@@ -314,7 +323,7 @@ with tab_matrix:
 
 with tab_builder:
   st.subheader("Programmpunkt fehlerfrei einplanen")
-  with st.form("builder_v25"):
+  with st.form("builder_v26"):
     col_b1, col_b2 = st.columns(2)
     with col_b1:
       day = st.selectbox("Wochentag", WEEKDAYS)
