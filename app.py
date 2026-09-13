@@ -4,25 +4,24 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 5.2
-SAVE_FILE = "sendeplan_v5.2.json"
-FORMATS_FILE = "formats_v5.2.json"
+# Dateipfad für Version 5.3
+SAVE_FILE = "sendeplan_v5.3.json"
+FORMATS_FILE = "formats_v5.3.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v5.2 | Broadcast Direktion",
+    page_title="Master Control v5.3 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V5.2) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V5.3) ---
 st.markdown(
     """
     <style>
     .main { background-color: #0e1117; }
     .block-container { padding-top: 2rem; }
     
-    /* Edles Control-Room Dashboard Grid für Metriken */
     .metric-grid {
         display: flex;
         gap: 15px;
@@ -143,7 +142,6 @@ DEFAULT_SERIES_DATABASE = {
     },
 }
 
-# --- SMART FILLER DATENBANK ---
 FILLER_DATABASE = {
     "Sender-Trailer": {"net": 1, "ad": 0, "genre": "Promo"},
     "Programm-Vorschau": {"net": 2, "ad": 0, "genre": "Promo"},
@@ -191,35 +189,12 @@ if "series_db" not in st.session_state:
   st.session_state.series_db = load_formats()
 
 
-# --- HILFSFUNKTION FÜR SLOT-HINWEISE ---
-def get_slot_grid_info(total_mins):
-  target_slot = round(total_mins / 30) * 30
-  if target_slot == 0:
-    target_slot = 30
-
-  diff = total_mins - target_slot
-  if diff == 0:
-    return True, f"Passt exakt in ein {target_slot}-Minuten-Raster."
-  elif diff < 0:
-    return (
-        False,
-        f"Gesamtlänge beträgt nur {total_mins} Min. ({abs(diff)} Min. kürzer"
-        f" als ein regulärer {target_slot}-Minuten-Slot).",
-    )
-  else:
-    return (
-        False,
-        f"Gesamtlänge beträgt {total_mins} Min. ({diff} Min. Überlänge für einen"
-        f" regulären {target_slot}-Minuten-Slot).",
-    )
-
-
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v5.2 JSON) ---
+# --- DATEN-PERSISTENZ ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v5.1.json" if os.path.exists("sendeplan_v5.1.json") else None)
+      else ("sendeplan_v5.2.json" if os.path.exists("sendeplan_v5.2.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -236,15 +211,19 @@ def load_data():
     except Exception:
       pass
 
-  for item in schedule:
-    if (
-        item.get("Sendung") in ["Tagessthemen", "Tagesschau / News"]
-        and item.get("Staffel") == 1
-    ):
-      item["Staffel"] = 2026
-
   if not schedule:
     schedule = [
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 1,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
         {
             "Wochentag": "Montag",
             "Uhrzeit": "20:15 - 20:45",
@@ -253,215 +232,6 @@ def load_data():
             "Ep.": 1,
             "Netto": 24,
             "Werbung": 6,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "21:15 - 22:15",
-            "Sendung": "Breaking Bad",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 45,
-            "Werbung": 15,
-            "Gesamt": 60,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 1,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 2,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Mittwoch",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 3,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Donnerstag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 4,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Freitag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 5,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Samstag",
-            "Uhrzeit": "20:15 - 20:30",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 6,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Sonntag",
-            "Uhrzeit": "20:15 - 20:30",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 7,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 2,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Mittwoch",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 3,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Donnerstag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 4,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Freitag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 5,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "20:45 - 21:15",
-            "Sendung": "Hacks",
-            "Staffel": 1,
-            "Ep.": 2,
-            "Netto": 24,
-            "Werbung": 6,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "22:15 - 23:30",
-            "Sendung": "Deutschland - 100!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 75,
-            "Werbung": 0,
-            "Gesamt": 75,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "23:30 - 00:00",
-            "Sendung": "Deutschland - die reportage!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "00:30 - 01:15",
-            "Sendung": "Deutschland - die doku!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 45,
-            "Werbung": 0,
-            "Gesamt": 45,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "01:15 - 02:00",
-            "Sendung": "Deutschlandmagazin",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 45,
-            "Werbung": 0,
-            "Gesamt": 45,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "02:00 - 02:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 1,
-            "Netto": 30,
-            "Werbung": 0,
             "Gesamt": 30,
             "Status": "Erstausstrahlung",
         },
@@ -487,10 +257,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v5.2: Programm-Direktion")
+st.title("📡 Master Control v5.3: Interaktive Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v5.2)** — Integrierte Matrix für Tagesprogramm"
-    " (06-20h), Primetime (Mo-So) & Nachtprogramm (ab 02:00h)."
+    "**Broadcast-Engine (v5.3)** — Direkte Bearbeitung über strukturierte"
+    " Matrix-Tabellen für Tagesprogramm, Primetime und Nachtprogramm."
 )
 
 total_items = len(st.session_state.schedule)
@@ -509,7 +279,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v5.2 Structured Matrix</div>
+            <div class="metric-value">v5.3 Interactive Matrix</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -523,360 +293,186 @@ st.markdown(
 st.markdown("---")
 
 # --- TABS ---
-tab_matrix, tab_prog_matrix, tab_builder, tab_db = st.tabs([
-    "📅 Wochen-Matrix & Sendeplan",
-    "🎛️ Programmschema-Matrix (Tag / Prime / Nacht)",
+tab_matrix, tab_builder, tab_db = st.tabs([
+    "🎛️ Interaktive Programmschema-Matrix",
     "⚡ Schnell-Planer (Neuer Slot)",
     "📚 Format-Referenz & Bearbeitung",
 ])
 
-# --- TAB 1: WOCHEN-MATRIX & SENDEPLAN ---
+# --- TAB 1: INTERAKTIVE PROGRAMMSCHEMA-MATRIX ---
 with tab_matrix:
-  st.subheader("Wochenübersicht & Sendeplan")
-
-  if st.session_state.schedule:
-    df = pd.DataFrame(st.session_state.schedule)
-    day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
-    if "Wochentag" in df.columns:
-      df["_sort"] = df["Wochentag"].map(day_sorting).fillna(9)
-      df = df.sort_values(by=["_sort", "Uhrzeit"]).drop(columns=["_sort"])
-
-    display_df = df[[
-        "Wochentag",
-        "Uhrzeit",
-        "Sendung",
-        "Staffel",
-        "Ep.",
-        "Netto",
-        "Werbung",
-        "Gesamt",
-        "Status",
-    ]].copy()
-    display_df.columns = [
-        "Tag",
-        "Uhrzeit",
-        "Sendung",
-        "St.",
-        "Ep.",
-        "Netto",
-        "Werb.",
-        "Ges.",
-        "Status",
-    ]
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-
-    with st.expander("🗑️ Sendeplätze & Episoden verwalten / löschen", expanded=True):
-      st.markdown(
-          "Wähle einen Sendeplatz aus, um ihn gezielt aus dem Sendeplan zu"
-          " entfernen."
-      )
-
-      for idx, row in df.iterrows():
-        col_m1, col_m2 = st.columns([5, 1])
-        with col_m1:
-          st.text(
-              f"• {row['Wochentag']} | {row['Uhrzeit']} – {row['Sendung']}"
-              f" (St. {row['Staffel']}, Ep. {row['Ep.']})"
-          )
-        with col_m2:
-          if st.button("❌ Löschen", key=f"mgmt_del_{idx}"):
-            orig_idx = st.session_state.schedule.index(
-                row.drop(labels=["_sort"], errors="ignore").to_dict()
-            )
-            st.session_state.schedule.pop(orig_idx)
-            save_data(
-                st.session_state.schedule, st.session_state.acknowledged_warnings
-            )
-            st.success("Sendeplatz entfernt!")
-            st.rerun()
-
-    st.markdown("---")
-
-    with st.expander("🛠️ Sendeplatz-Feintuner (Details anpassen)", expanded=False):
-      if st.session_state.schedule:
-        options_labels = [
-            f"#{i+1}: {item['Wochentag']} | {item['Uhrzeit']} –"
-            f" {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
-            for i, item in enumerate(st.session_state.schedule)
-        ]
-        selected_label = st.selectbox(
-            "Programmpunkt auswählen", options_labels, key="compact_select"
-        )
-        selected_idx = options_labels.index(selected_label)
-        current_item = st.session_state.schedule[selected_idx]
-
-        current_format = st.session_state.series_db.get(current_item["Sendung"])
-        fixed_net = (
-            current_format["net"]
-            if current_format
-            else int(current_item["Netto"])
-        )
-        new_net = fixed_net
-
-        try:
-          start_str_parts = current_item["Uhrzeit"].split(" - ")[0].split(":")
-          curr_h = int(start_str_parts[0])
-          curr_m = int(start_str_parts[1])
-        except Exception:
-          curr_h, curr_m = 20, 15
-
-        col_e1, col_e2, col_e3, col_e4 = st.columns([2, 1, 1.5, 1])
-
-        with col_e1:
-          new_time_val = st.time_input(
-              "Startzeit", value=time(curr_h, curr_m), key="edit_single_time"
-          )
-        with col_e2:
-          new_ad = st.number_input(
-              "Werbung (Min.)",
-              min_value=0,
-              max_value=60,
-              value=int(current_item["Werbung"]),
-              key="edit_ad",
-          )
-        with col_e3:
-          current_status = current_item.get("Status", "Erstausstrahlung")
-          status_idx = (
-              STATUS_OPTIONS.index(current_status)
-              if current_status in STATUS_OPTIONS
-              else 0
-          )
-          new_status = st.selectbox(
-              "Status", STATUS_OPTIONS, index=status_idx, key="edit_status"
-          )
-        with col_e4:
-          st.markdown("<br>", unsafe_allow_html=True)
-          save_clicked = st.button(
-              "💾 Speichern", use_container_width=True, key="btn_save_slot"
-          )
-
-        total_len = new_net + new_ad
-        start_dt = datetime.combine(datetime.today(), new_time_val)
-        end_dt = start_dt + timedelta(minutes=total_len)
-        new_time_str = (
-            f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-        )
-
-        if save_clicked:
-          st.session_state.schedule[selected_idx]["Uhrzeit"] = new_time_str
-          st.session_state.schedule[selected_idx]["Netto"] = int(new_net)
-          st.session_state.schedule[selected_idx]["Werbung"] = int(new_ad)
-          st.session_state.schedule[selected_idx]["Gesamt"] = int(total_len)
-          st.session_state.schedule[selected_idx]["Status"] = new_status
-          save_data(
-              st.session_state.schedule, st.session_state.acknowledged_warnings
-          )
-          st.success("Erfolgreich aktualisiert!")
-          st.rerun()
-
-    # Validierung & Live-Logik
-    st.markdown("---")
-    st.subheader("🔍 Live-Logik & Format-Datenbank-Prüfung")
-    errors_found = []
-    slot_warnings = []
-    gap_actions = []
-
-    for idx, row in enumerate(st.session_state.schedule):
-      show_name = row["Sendung"]
-      format_spec = st.session_state.series_db.get(
-          show_name
-      ) or FILLER_DATABASE.get(show_name)
-
-      try:
-        if not format_spec:
-          errors_found.append(
-              f"**Unbekanntes Format bei Sendeplatz #{idx+1} ({row['Wochentag']},"
-              f" {row['Uhrzeit']}):** '{show_name}' existiert nicht in der"
-              " DB!"
-          )
-        else:
-          expected_net = format_spec["net"]
-          actual_net = int(row["Netto"])
-          if actual_net != expected_net:
-            errors_found.append(
-                f"**Episodenlängen-Fehler bei Sendeplatz #{idx+1} ("
-                f"{row['Wochentag']}, {row['Uhrzeit']}) – '{show_name}':**"
-                f" Eingetragen: {actual_net} Min. | DB fordert"
-                f" {expected_net} Min."
-            )
-
-        t_parts = row["Uhrzeit"].split(" - ")
-        s_parts = list(map(int, t_parts[0].split(":")))
-        e_parts = list(map(int, t_parts[1].split(":")))
-
-        end_total_mins = e_parts[0] * 60 + e_parts[1]
-        start_total_mins = s_parts[0] * 60 + s_parts[1]
-        if end_total_mins < start_total_mins:
-          end_total_mins += 24 * 60
-        slot_mins = end_total_mins - start_total_mins
-
-        expected_total = int(row["Netto"]) + int(row["Werbung"])
-        if slot_mins != expected_total:
-          errors_found.append(
-              f"**Zeitfenster-Konflikt bei Sendeplatz #{idx+1}:** Fenster"
-              f" umfasst {slot_mins} Min., Netto+Werbung ergeben"
-              f" {expected_total} Min."
-          )
-      except Exception:
-        errors_found.append(
-            f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
-        )
-
-    if errors_found:
-      for err in errors_found:
-        st.error(f"❌ {err}")
-    else:
-      st.success(
-          "✅ **Keine Laufzeit- oder Kollisionsfehler:** Alle Sendeplätze sind"
-          " sauber eingetaktet."
-      )
-
-    st.markdown("---")
-    if st.button("🗑️ Sendeplan komplett zurücksetzen"):
-      st.session_state.schedule = []
-      st.session_state.acknowledged_warnings.clear()
-      save_data([], set())
-      st.rerun()
-  else:
-    st.info("Der Sendeplan ist aktuell leer.")
-
-
-# --- TAB 2: PROGRAMMSCHEMA-MATRIX (TAG / PRIME / NACHT) ---
-with tab_prog_matrix:
   st.subheader(
-      "🎛️ Strukturierte Programmschema-Matrix (Tagesprogramm, Primetime,"
-      " Nachtprogramm)"
+      "🎛️ Programm-Matrizen (Direkt bearbeitbar & voll synchronisiert)"
   )
   st.markdown(
-      "Hier siehst du die drei dedizierten Programmbereiche, unterteilt nach"
-      " **Tagesprogramm (06:00 - 20:00 Uhr)**, **Primetime (Montag bis"
-      " Sonntag)** und **Nachtprogramm (ab 02:00 Uhr)**."
+      "Hier kannst du das **Tagesprogramm**, die **Primetime (Montag bis"
+      " Sonntag)** und das **Nachtprogramm** direkt in großen, übersichtlichen"
+      " Tabellen bearbeiten, hinzufügen oder Zeilen löschen."
   )
 
-  matrix_tab_day, matrix_tab_prime, matrix_tab_night = st.tabs([
+  sub_tab_day, sub_tab_prime, sub_tab_night = st.tabs([
       "☀️ Tagesprogramm (06:00 - 20:00)",
-      "⭐ Primetime (Mo - So)",
+      "⭐ Primetime (Mo - So Abend)",
       "🌙 Nachtprogramm (ab 02:00)",
   ])
 
-  # --- BEREICH 1: TAGESPROGRAMM (06:00 bis 20:00 Uhr) ---
-  with matrix_tab_day:
-    st.markdown(
-        "### Tagesprogramm-Slots (06:00 - 20:00 Uhr) über die Woche"
+  all_shows_list = list(st.session_state.series_db.keys()) + list(
+      FILLER_DATABASE.keys()
+  )
+
+
+  # Hilfsfunktion zum Rendern eines interaktiven Data Editors für einen bestimmten Zeitbereich
+  def render_matrix_editor(filter_func, section_title):
+    st.markdown(f"### {section_title}")
+
+    # Filtere Sendeplätze passend zum Bereich
+    section_items = []
+    other_items = []
+    for item in st.session_state.schedule:
+      if filter_func(item):
+        section_items.append(item)
+      else:
+        other_items.append(item)
+
+    df_sec = pd.DataFrame(section_items)
+    if df_sec.empty:
+      df_sec = pd.DataFrame(
+          columns=[
+              "Wochentag",
+              "Uhrzeit",
+              "Sendung",
+              "Staffel",
+              "Ep.",
+              "Netto",
+              "Werbung",
+              "Gesamt",
+              "Status",
+          ]
+      )
+
+    edited_df = st.data_editor(
+        df_sec,
+        num_rows="dynamic",
+        use_container_width=True,
+        key=f"editor_{section_title}",
+        column_config={
+            "Wochentag": st.column_config.SelectboxColumn(
+                "Wochentag", options=WEEKDAYS, required=True
+            ),
+            "Sendung": st.column_config.SelectboxColumn(
+                "Sendung / Format", options=all_shows_list, required=True
+            ),
+            "Status": st.column_config.SelectboxColumn(
+                "Status", options=STATUS_OPTIONS, required=True
+            ),
+            "Staffel": st.column_config.NumberColumn("Staffel", min_value=1),
+            "Ep.": st.column_config.NumberColumn("Ep.", min_value=1),
+            "Netto": st.column_config.NumberColumn("Netto (Min.)", min_value=1),
+            "Werbung": st.column_config.NumberColumn(
+                "Werbung (Min.)", min_value=0
+            ),
+            "Gesamt": st.column_config.NumberColumn(
+                "Gesamt (Min.)", min_value=1
+            ),
+        },
     )
-    # Filtere Sendeplätze, die im Bereich 06:00 bis 20:00 Uhr liegen
-    day_program_slots = []
-    for item in st.session_state.schedule:
+
+    if st.button(
+        f"💾 Änderungen für '{section_title}' speichern",
+        key=f"btn_save_{section_title}",
+    ):
+      # Konvertiere bearbeiteten DataFrame zurück zu Dicts
+      new_section_list = edited_df.to_dict(orient="records")
+
+      # Automatische Neuberechnung von 'Gesamt', falls Netto/Werbung geändert wurden
+      for row in new_section_list:
+        try:
+          row["Netto"] = int(row["Netto"])
+          row["Werbung"] = int(row["Werbung"])
+          row["Gesamt"] = row["Netto"] + row["Werbung"]
+          row["Staffel"] = int(row["Staffel"])
+          row["Ep."] = int(row["Ep."])
+        except:
+          pass
+
+      # Zusammenführen mit den anderen Sendeplätzen
+      st.session_state.schedule = other_items + new_section_list
+      save_data(
+          st.session_state.schedule, st.session_state.acknowledged_warnings
+      )
+      st.success(f"Änderungen für '{section_title}' erfolgreich gespeichert!")
+      st.rerun()
+
+
+  # 1. Tagesprogramm (06:00 bis 20:00 Uhr)
+  with sub_tab_day:
+
+    def is_day_prog(item):
       try:
-        start_h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
-        if 6 <= start_h < 20:
-          day_program_slots.append(item)
+        h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
+        return 6 <= h < 20
       except:
-        pass
+        return False
 
-    if day_program_slots:
-      dp_df = pd.DataFrame(day_program_slots)
-      st.dataframe(
-          dp_df[[
-              "Wochentag",
-              "Uhrzeit",
-              "Sendung",
-              "Staffel",
-              "Ep.",
-              "Netto",
-              "Werbung",
-              "Gesamt",
-              "Status",
-          ]],
-          use_container_width=True,
-          hide_index=True,
-      )
-    else:
-      st.info(
-          "Keine Sendeplätze im Tagesprogramm (06:00 - 20:00) eingetragen."
-          " Nutze den Schnell-Planer, um Sendungen hinzuzufügen."
-      )
+    render_matrix_editor(is_day_prog, "Tagesprogramm (06:00 - 20:00 Uhr)")
 
-  # --- BEREICH 2: PRIMETIME (Montag bis Sonntag) ---
-  with matrix_tab_prime:
-    st.markdown("### Primetime-Übersicht (Abendprogramm Mo - So)")
-    # Zeige Primetime-Slots (typischerweise ab 20:00 / 20:15 Uhr)
-    prime_slots = []
-    for item in st.session_state.schedule:
+  # 2. Primetime (Abendprogramm ab 20:00 bis 02:00 Uhr)
+  with sub_tab_prime:
+
+    def is_prime(item):
       try:
-        start_h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
-        if 20 <= start_h < 2:  # Abendstunden
-          prime_slots.append(item)
+        h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
+        return h >= 20 or h < 2
       except:
-        pass
+        return False
 
-    if prime_slots:
-      prime_df = pd.DataFrame(prime_slots)
-      day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
-      prime_df["_sort"] = prime_df["Wochentag"].map(day_sorting).fillna(9)
-      prime_df = prime_df.sort_values(by=["_sort", "Uhrzeit"]).drop(
-          columns=["_sort"]
-      )
+    render_matrix_editor(is_prime, "Primetime (Abendprogramm Mo - So)")
 
-      st.dataframe(
-          prime_df[[
-              "Wochentag",
-              "Uhrzeit",
-              "Sendung",
-              "Staffel",
-              "Ep.",
-              "Netto",
-              "Werbung",
-              "Gesamt",
-              "Status",
-          ]],
-          use_container_width=True,
-          hide_index=True,
-      )
-    else:
-      st.info("Keine Primetime-Slots gefunden.")
+  # 3. Nachtprogramm (ab 02:00 bis 06:00 Uhr)
+  with sub_tab_night:
 
-  # --- BEREICH 3: NACHTLICHT / NACHTPROGRAMM (ab 02:00 Uhr) ---
-  with matrix_tab_night:
-    st.markdown("### Nachtprogramm (ab 02:00 Uhr bis 06:00 Uhr)")
-    night_slots = []
-    for item in st.session_state.schedule:
+    def is_night(item):
       try:
-        start_h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
-        if 2 <= start_h < 6:
-          night_slots.append(item)
+        h = int(item["Uhrzeit"].split(" - ")[0].split(":")[0])
+        return 2 <= h < 6
       except:
-        pass
+        return False
 
-    if night_slots:
-      night_df = pd.DataFrame(night_slots)
-      st.dataframe(
-          night_df[[
-              "Wochentag",
-              "Uhrzeit",
-              "Sendung",
-              "Staffel",
-              "Ep.",
-              "Netto",
-              "Werbung",
-              "Gesamt",
-              "Status",
-          ]],
-          use_container_width=True,
-          hide_index=True,
-      )
-    else:
-      st.info(
-          "Keine Sendeplätze im Nachtprogramm (ab 02:00 Uhr) eingetragen. Du"
-          " kannst über den Schnell-Planer Sendungen ab 02:00 Uhr anlegen."
+    render_matrix_editor(is_night, "Nachtprogramm (ab 02:00 Uhr)")
+
+  # Live-Logik & Validierung unter den Matrizen
+  st.markdown("---")
+  st.subheader("🔍 Live-Logik & Kollisionsprüfung")
+  errors_found = []
+  for idx, row in enumerate(st.session_state.schedule):
+    show_name = row.get("Sendung")
+    format_spec = st.session_state.series_db.get(
+        show_name
+    ) or FILLER_DATABASE.get(show_name)
+    if not format_spec:
+      errors_found.append(
+          f"Sendeplatz #{idx+1} ({row.get('Wochentag')}): Unbekanntes Format"
+          f" '{show_name}'."
       )
 
+  if errors_found:
+    for err in errors_found:
+      st.error(f"❌ {err}")
+  else:
+    st.success(
+        "✅ Alle Sendeplätze in den Matrizen sind gültig und sauber eingetaktet."
+    )
 
-# --- TAB 3: SCHNELL-PLANER (NEUER SLOT) ---
+  if st.button("🗑️ Kompletten Sendeplan zurücksetzen"):
+    st.session_state.schedule = []
+    st.session_state.acknowledged_warnings.clear()
+    save_data([], set())
+    st.rerun()
+
+
+# --- TAB 2: SCHNELL-PLANER (NEUER SLOT) ---
 with tab_builder:
-  st.subheader("Programmpunkt fehlerfrei einplanen")
+  st.subheader("Programmpunkt über den Schnell-Planer hinzufügen")
 
   col_b1, col_b2 = st.columns(2)
   with col_b1:
@@ -901,67 +497,26 @@ with tab_builder:
       season = st.selectbox(
           "Staffel", list(format_info["seasons"].keys()), key="builder_season"
       )
-
       existing_eps = [
           x["Ep."]
           for x in st.session_state.schedule
           if x["Sendung"] == show and x["Staffel"] == season
       ]
       next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
-
-      if (
-          "builder_last_show" not in st.session_state
-          or st.session_state.builder_last_show != show
-          or "builder_last_season" not in st.session_state
-          or st.session_state.builder_last_season != season
-          or "builder_sched_len" not in st.session_state
-          or st.session_state.builder_sched_len != len(st.session_state.schedule)
-      ):
-        st.session_state.builder_last_show = show
-        st.session_state.builder_last_season = season
-        st.session_state.builder_sched_len = len(st.session_state.schedule)
-        st.session_state.builder_ep_input = next_ep_suggestion
-
       episode = st.number_input(
-          "Start-Episodennummer (Automatisch nächste freie Folge)",
+          "Start-Episodennummer",
           min_value=1,
           max_value=10000,
-          value=st.session_state.get("builder_ep_input", next_ep_suggestion),
-          step=1,
+          value=next_ep_suggestion,
           key="builder_ep_input",
       )
     else:
       season = 2026
       episode = 1
-      st.info("💡 Smart Filler Format (keine Episodennummer nötig).")
+      st.info("💡 Smart Filler Format.")
 
   with col_b2:
-    suggested_time = time(20, 15)
-    if day_selection in WEEKDAYS:
-      day_sched = [
-          x for x in st.session_state.schedule if x["Wochentag"] == day_selection
-      ]
-      if day_sched:
-        latest_end = "00:00"
-        for slot in day_sched:
-          try:
-            end_t_str = slot["Uhrzeit"].split(" - ")[1]
-            if end_t_str > latest_end:
-              latest_end = end_t_str
-          except:
-            pass
-        if latest_end != "00:00":
-          try:
-            h, m = map(int, latest_end.split(":"))
-            suggested_time = time(h, m)
-          except:
-            pass
-
-    start_t = st.time_input(
-        "Startzeit (Automatisch im Anschluss)",
-        value=suggested_time,
-        key="builder_time",
-    )
+    start_t = st.time_input("Startzeit", value=time(20, 15), key="builder_time")
     count = st.selectbox(
         "Anzahl Folgen nacheinander", list(range(1, 6)), key="builder_count"
     )
@@ -976,49 +531,25 @@ with tab_builder:
         f" gesamt**."
     )
 
-  submitted = st.button(
+  if st.button(
       "Sendung in den Sendeplan aufnehmen",
       key="builder_submit_btn",
       type="primary",
-  )
-  if submitted:
+  ):
     added_entries = []
-
-    if day_selection == "Montag bis Freitag (Mo-Fr)":
-      target_days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
-    elif day_selection == "Montag bis Sonntag (Ganze Woche)":
-      target_days = WEEKDAYS
-    else:
-      target_days = [day_selection]
-
+    target_days = (
+        ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+        if day_selection == "Montag bis Freitag (Mo-Fr)"
+        else (
+            WEEKDAYS
+            if day_selection == "Montag bis Sonntag (Ganze Woche)"
+            else [day_selection]
+        )
+    )
     current_ep = int(episode)
 
     for day_name in target_days:
-      day_specific_time = start_t
-      if (
-          day_selection == "Montag bis Sonntag (Ganze Woche)"
-          or day_selection == "Montag bis Freitag (Mo-Fr)"
-      ):
-        day_sched = [
-            x for x in st.session_state.schedule if x["Wochentag"] == day_name
-        ]
-        if day_sched:
-          latest_end = "00:00"
-          for slot in day_sched:
-            try:
-              end_t_str = slot["Uhrzeit"].split(" - ")[1]
-              if end_t_str > latest_end:
-                latest_end = end_t_str
-            except:
-              pass
-          if latest_end != "00:00":
-            try:
-              h, m = map(int, latest_end.split(":"))
-              day_specific_time = time(h, m)
-            except:
-              pass
-
-      current_dt = datetime.combine(datetime.today(), day_specific_time)
+      current_dt = datetime.combine(datetime.today(), start_t)
       for i in range(count):
         start_str = current_dt.strftime("%H:%M")
         current_dt += timedelta(minutes=total_block)
@@ -1046,10 +577,9 @@ with tab_builder:
     st.rerun()
 
 
-# --- TAB 4: FORMAT-REFERENZ & BEARBEITUNG ---
+# --- TAB 3: FORMAT-REFERENZ & BEARBEITUNG ---
 with tab_db:
   st.subheader("📚 Verifizierte Formate & Standard-Laufzeiten")
-
   db_rows = [
       {
           "Format": k,
@@ -1063,95 +593,24 @@ with tab_db:
   st.table(pd.DataFrame(db_rows))
 
   st.markdown("---")
-  st.subheader("🛠️ Format bearbeiten oder löschen")
-
-  selected_format_to_edit = st.selectbox(
-      "Format auswählen", list(st.session_state.series_db.keys())
-  )
-  if selected_format_to_edit:
-    fmt_data = st.session_state.series_db[selected_format_to_edit]
-    with st.form("edit_format_form"):
-      col_ed1, col_ed2 = st.columns(2)
-      with col_ed1:
-        edit_genre = st.text_input("Genre", value=fmt_data.get("genre", ""))
-        edit_net = st.number_input(
-            "Netto-Laufzeit (Min. fix)",
-            min_value=1,
-            max_value=300,
-            value=int(fmt_data.get("net", 30)),
-        )
-      with col_ed2:
-        edit_ad = st.number_input(
-            "Standard-Werbezeit (Min.)",
-            min_value=0,
-            max_value=60,
-            value=int(fmt_data.get("ad", 6)),
-        )
-
-      col_sub1, col_sub2 = st.columns(2)
-      with col_sub1:
-        update_clicked = st.form_submit_button("💾 Format aktualisieren")
-      with col_sub2:
-        delete_format_clicked = st.form_submit_button("🗑️ Format löschen")
-
-      if update_clicked:
-        st.session_state.series_db[selected_format_to_edit][
-            "genre"
-        ] = edit_genre
-        st.session_state.series_db[selected_format_to_edit]["net"] = int(
-            edit_net
-        )
-        st.session_state.series_db[selected_format_to_edit]["ad"] = int(edit_ad)
-        save_formats(st.session_state.series_db)
-        st.success(
-            f"Format '{selected_format_to_edit}' erfolgreich aktualisiert!"
-        )
-        st.rerun()
-
-      if delete_format_clicked:
-        if len(st.session_state.series_db) > 1:
-          del st.session_state.series_db[selected_format_to_edit]
-          save_formats(st.session_state.series_db)
-          st.success(f"Format '{selected_format_to_edit}' wurde gelöscht!")
-          st.rerun()
-        else:
-          st.error("Die Datenbank muss mindestens ein Format enthalten.")
-
-  st.markdown("---")
-  st.subheader("➕ Neues Format / Sendung zur Datenbank hinzufügen")
-
+  st.subheader("➕ Neues Format zur Datenbank hinzufügen")
   with st.form("new_format_form"):
     col_f1, col_f2 = st.columns(2)
     with col_f1:
       new_show_name = st.text_input("Name der Sendung / Serie")
-      new_genre = st.text_input("Genre (z. B. Sitcom, Dokumentation)")
+      new_genre = st.text_input("Genre")
     with col_f2:
-      new_net = st.number_input(
-          "Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30
-      )
-      new_ad = st.number_input(
-          "Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6
-      )
+      new_net = st.number_input("Netto-Laufzeit (Min.)", value=30)
+      new_ad = st.number_input("Werbezeit (Min.)", value=6)
 
-    format_submitted = st.form_submit_button("Format in Datenbank speichern")
-    if format_submitted:
+    if st.form_submit_button("Format speichern"):
       if new_show_name.strip():
-        if new_show_name in st.session_state.series_db:
-          st.warning(
-              f"Das Format '{new_show_name}' existiert bereits in der Datenbank!"
-          )
-        else:
-          st.session_state.series_db[new_show_name] = {
-              "genre": new_genre if new_genre else "Allgemein",
-              "seasons": {1: 20},
-              "net": int(new_net),
-              "ad": int(new_ad),
-          }
-          save_formats(st.session_state.series_db)
-          st.success(
-              f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft"
-              " gespeichert!"
-          )
-          st.rerun()
-      else:
-        st.error("Bitte gib einen gültigen Namen für das Format ein.")
+        st.session_state.series_db[new_show_name] = {
+            "genre": new_genre or "Allgemein",
+            "seasons": {1: 20},
+            "net": int(new_net),
+            "ad": int(new_ad),
+        }
+        save_formats(st.session_state.series_db)
+        st.success(f"Format '{new_show_name}' gespeichert!")
+        st.rerun()
