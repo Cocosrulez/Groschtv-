@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.5
-SAVE_FILE = "sendeplan_v4.5.json"
-FORMATS_FILE = "formats_v4.5.json"
+# Dateipfad für Version 4.7
+SAVE_FILE = "sendeplan_v4.7.json"
+FORMATS_FILE = "formats_v4.7.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.5 | Broadcast Direktion",
+    page_title="Master Control v4.7 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.5) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.7) ---
 st.markdown(
     """
     <style>
@@ -214,12 +214,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.5 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.7 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v4.4.json" if os.path.exists("sendeplan_v4.4.json") else None)
+      else ("sendeplan_v4.6.json" if os.path.exists("sendeplan_v4.6.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -235,6 +235,11 @@ def load_data():
           schedule = content
     except Exception:
       pass
+
+  # Korrektur direkt beim Laden: Tagesthemen auf Staffel 2026 setzen
+  for item in schedule:
+    if item.get("Sendung") == "Tagessthemen" and item.get("Staffel") == 1:
+      item["Staffel"] = 2026
 
   if not schedule:
     schedule = [
@@ -260,270 +265,6 @@ def load_data():
             "Gesamt": 60,
             "Status": "Erstausstrahlung",
         },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 1,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 2,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Mittwoch",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 3,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Donnerstag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 4,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Freitag",
-            "Uhrzeit": "20:00 - 20:15",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 5,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Samstag",
-            "Uhrzeit": "20:15 - 20:30",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 6,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Sonntag",
-            "Uhrzeit": "20:15 - 20:30",
-            "Sendung": "Tagesschau / News",
-            "Staffel": 2026,
-            "Ep.": 7,
-            "Netto": 15,
-            "Werbung": 0,
-            "Gesamt": 15,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 2,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Mittwoch",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 3,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Donnerstag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 4,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Freitag",
-            "Uhrzeit": "19:30 - 20:00",
-            "Sendung": "GZSZ",
-            "Staffel": 1,
-            "Ep.": 5,
-            "Netto": 22,
-            "Werbung": 8,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "20:45 - 21:15",
-            "Sendung": "Hacks",
-            "Staffel": 1,
-            "Ep.": 2,
-            "Netto": 24,
-            "Werbung": 6,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "22:15 - 23:30",
-            "Sendung": "Deutschland - 100!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 75,
-            "Werbung": 0,
-            "Gesamt": 75,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "23:30 - 00:00",
-            "Sendung": "Deutschland - die reportage!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "00:30 - 01:15",
-            "Sendung": "Deutschland - die doku!",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 45,
-            "Werbung": 0,
-            "Gesamt": 45,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "01:15 - 02:00",
-            "Sendung": "Deutschlandmagazin",
-            "Staffel": 1,
-            "Ep.": 1,
-            "Netto": 45,
-            "Werbung": 0,
-            "Gesamt": 45,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Montag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 1,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Dienstag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 2,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Mittwoch",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 3,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Donnerstag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 4,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Freitag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 5,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Samstag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 6,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
-        {
-            "Wochentag": "Sonntag",
-            "Uhrzeit": "00:00 - 00:30",
-            "Sendung": "Tagessthemen",
-            "Staffel": 2026,
-            "Ep.": 7,
-            "Netto": 30,
-            "Werbung": 0,
-            "Gesamt": 30,
-            "Status": "Erstausstrahlung",
-        },
     ]
   return schedule, acknowledged
 
@@ -546,10 +287,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.5: Programm-Direktion")
+st.title("📡 Master Control v4.7: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.5)** — Integrierte Import-Sendungen,"
-    " Tagessthemen (Staffel 2026), Ganze-Woche-Modus & Smart Filler."
+    "**Broadcast-Engine (v4.7)** — Gezielte Episoden-Löschung (❌),"
+    " korrigierte Tagesthemen-Staffeln (2026) & Ganze-Woche-Modus."
 )
 
 total_items = len(st.session_state.schedule)
@@ -568,7 +309,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.5 Live-State</div>
+            <div class="metric-value">v4.7 Live-State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -602,13 +343,13 @@ with tab_matrix:
 
     st.markdown("---")
 
-    # --- DIREKTE SCHNELL-LÖSCHUNG (❌) ---
+    # --- DIREKTE SCHNELL-LÖSCHUNG (❌) FÜR JEDE EPISODE ---
     with st.expander(
         "🗑️ Schnell-Löschung & Sendeplatz-Verwaltung (❌)", expanded=True
     ):
       st.markdown(
-          "Hier kannst du Einträge direkt mit einem Klick auf **❌ Löschen**"
-          " aus dem Sendeplan entfernen."
+          "Hier kannst du einzelne Sendeplätze oder Episoden gezielt mit"
+          " einem Klick auf **❌ Löschen** aus dem Sendeplan entfernen."
       )
 
       for idx, item in enumerate(st.session_state.schedule):
@@ -625,7 +366,7 @@ with tab_matrix:
                 st.session_state.schedule,
                 st.session_state.acknowledged_warnings,
             )
-            st.success("Sendeplatz entfernt!")
+            st.success("Sendeplatz / Episode entfernt!")
             st.rerun()
 
     st.markdown("---")
@@ -921,7 +662,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.5.csv",
+          "sendeplan_v4.7.csv",
           "text/csv",
       )
   else:
