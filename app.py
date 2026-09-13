@@ -4,8 +4,9 @@ import os
 import pandas as pd
 import streamlit as st
 
-SAVE_FILE = "sendeplan_v3.2.json"
-FORMATS_FILE = "formats_v3.2.json"
+# Fester Master-Dateipfad für dauerhafte Persistenz
+SAVE_FILE = "sendeplan_master.json"
+FORMATS_FILE = "formats_master.json"
 
 st.set_page_config(
     page_title="Master Control v3.2 | Broadcast Direktion",
@@ -13,6 +14,7 @@ st.set_page_config(
     layout="wide",
 )
 
+# --- MODERNES BROADCAST-CONTROL DESIGN ---
 st.markdown(
     """
     <style>
@@ -51,6 +53,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --- MASTER FORMAT-DATENBANK ---
 DEFAULT_SERIES_DATABASE = {
     "Tagesschau / News": {
         "genre": "Nachrichten",
@@ -165,12 +168,13 @@ DAY_BLOCK_OPTIONS = (
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
+# --- FORMATE LADEN & SPEICHERN ---
 def load_formats():
   fallback_files = [
       FORMATS_FILE,
+      "formats_v3.2.json",
       "formats_v3.1.json",
       "formats_v5.3.json",
-      "formats_v5.2.json",
   ]
   for fpath in fallback_files:
     if os.path.exists(fpath):
@@ -194,30 +198,11 @@ if "series_db" not in st.session_state:
   st.session_state.series_db = load_formats()
 
 
-def get_slot_grid_info(total_mins):
-  target_slot = round(total_mins / 30) * 30
-  if target_slot == 0:
-    target_slot = 30
-  diff = total_mins - target_slot
-  if diff == 0:
-    return True, f"Passt exakt in ein {target_slot}-Minuten-Raster."
-  elif diff < 0:
-    return (
-        False,
-        f"Gesamtlänge beträgt {total_mins} Min. ({abs(diff)} Min. kürzer als"
-        f" ein regulärer {target_slot}-Minuten-Slot).",
-    )
-  else:
-    return (
-        False,
-        f"Gesamtlänge beträgt {total_mins} Min. ({diff} Min. Überlänge für"
-        f" einen regulären {target_slot}-Minuten-Slot).",
-    )
-
-
+# --- SENDEPLAN LADEN & SPEICHERN ---
 def load_data():
   fallback_files = [
       SAVE_FILE,
+      "sendeplan_v3.2.json",
       "sendeplan_v3.1.json",
       "sendeplan_v5.3.json",
       "sendeplan_v5.2.json",
@@ -333,6 +318,7 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 
+# --- HILFSFUNKTIONEN FÜR ZEITEN & EPISODEN-SYNC ---
 def get_slot_category(time_str):
   try:
     start_str = time_str.split(" - ")[0]
@@ -348,38 +334,110 @@ def get_slot_category(time_str):
   return "prime"
 
 
-def get_episode_synchronization(show, season):
-  if show not in st.session_state.series_db:
-    return 1, [], 1
+def get_slot_grid_info(total_mins):
+  target_slot = round(total_mins / 30) * 30
+  if target_slot == 0:
+    target_slot = 30
+  diff = total_mins - target_slot
+  if diff == 0:
+    return True, f"Passt exakt in ein {target_slot}-Minuten-Raster."
+  elif diff < 0:
+    return (
+        False,
+        f"Gesamtlänge beträgt {total_mins} Min. ({abs(diff)} Min. kürzer als"
+        f" {target_slot}m-Slot).",
+    )
+  else:
+    return (
+        False,
+        f"Gesamtlänge beträgt {total_mins} Min. ({diff} Min. Überlänge für"
+        f" {target_slot}m-Slot).",
+    )
 
-  existing_eps = sorted(
+
+def get_episode_synchronization(show, season):
+  """Ermittelt die nächste freie Episode unter Berücksichtigung von Lücken und Staffelgrenzen.
+
+  Wiederholungen verbrennen keine Erstausstrahlungs-Episoden!
+  """
+  fmt = st.session_state.series_db.get(show)
+  if not fmt:
+    return 1, [], 1, [], None, False
+
+  seasons_dict = fmt.get("seasons", {})
+  max_season_eps = seasons_dict.get(int(season)) or seasons_dict.get(str(season))
+
+  # Nur Erstausstrahlungen / Live zählen als verbrauchte Episoden
+  premiered = sorted(
       list(
           set(
               int(x["Ep."])
               for x in st.session_state.schedule
               if x.get("Sendung") == show
               and int(x.get("Staffel", 1)) == int(season)
+              and x.get("Status") != "Wiederholung"
           )
       )
   )
 
-  if not existing_eps:
-    return 1, [], 1
+  if not premiered:
+    return 1, [], 1, [], max_season_eps, False
 
-  max_ep = max(existing_eps)
+  max_ep = max(premiered)
   all_expected = set(range(1, max_ep + 1))
-  missing_eps = sorted(list(all_expected - set(existing_eps)))
+  missing_eps = sorted(list(all_expected - set(premiered)))
   next_consecutive = max_ep + 1
 
   suggested = missing_eps[0] if missing_eps else next_consecutive
-  return suggested, missing_eps, next_consecutive
+
+  is_season_complete = False
+  if max_season_eps and len(premiered) >= max_season_eps and not missing_eps:
+    is_season_complete = True
+
+  return (
+      suggested,
+      missing_eps,
+      next_consecutive,
+      premiered,
+      max_season_eps,
+      is_season_complete,
+  )
 
 
+# --- REAKTIVE CALLBACKS BEI FORMAT- ODER STAFFELWECHSEL ---
+def on_show_change(prefix):
+  """Wird sofort ausgeführt, wenn der Nutzer im Dropdown eine andere Sendung wählt."""
+  show = st.session_state.get(f"{prefix}_show")
+  fmt = st.session_state.series_db.get(show)
+  if fmt and "seasons" in fmt:
+    avail_seasons = list(fmt["seasons"].keys())
+    curr_season = st.session_state.get(f"{prefix}_season")
+    if curr_season not in avail_seasons:
+      st.session_state[f"{prefix}_season"] = avail_seasons[0]
+    season = st.session_state[f"{prefix}_season"]
+    sugg, _, _, _, _, _ = get_episode_synchronization(show, season)
+    st.session_state[f"{prefix}_ep"] = sugg
+  else:
+    st.session_state[f"{prefix}_ep"] = 1
+
+
+def on_season_change(prefix):
+  """Wird sofort ausgeführt, wenn der Nutzer die Staffel wechselt."""
+  show = st.session_state.get(f"{prefix}_show")
+  season = st.session_state.get(f"{prefix}_season", 1)
+  sugg, _, _, _, _, _ = get_episode_synchronization(show, season)
+  st.session_state[f"{prefix}_ep"] = sugg
+
+
+all_shows_list = list(st.session_state.series_db.keys()) + list(
+    FILLER_DATABASE.keys()
+)
+
+# --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.2: Programmschema-Direktion")
 st.markdown(
-    "**Broadcast Direktion v3.2** — Duale Architektur mit globalem"
-    " Mehr-Tage-Schnellplaner, In-Place Tagesmatrizen und dynamisch"
-    " reaktiver Episodensynchronisation."
+    "**Broadcast Direktion Core** — Vollreaktiver Serien-Sync, Staffelprüfung,"
+    " In-Place Tagesmatrizen & Mehr-Tage-Schnellplaner."
 )
 
 total_items = len(st.session_state.schedule)
@@ -397,8 +455,8 @@ st.markdown(
             <div class="metric-value">{total_mins} Min.</div>
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
-            <div class="metric-label">Systemarchitektur</div>
-            <div class="metric-value">v3.2 Dual-Sync Engine</div>
+            <div class="metric-label">Episoden-Engine</div>
+            <div class="metric-value">v3.2 Reactive State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -411,12 +469,10 @@ st.markdown(
 
 st.markdown("---")
 
-all_shows_list = list(st.session_state.series_db.keys()) + list(
-    FILLER_DATABASE.keys()
-)
-
-
+# --- WIEDERVERWENDBARER TAGES-MATRIX-EDITOR MIT SOFORT-SYNC ---
 def render_day_matrix_editor(day_name, category, key_prefix):
+  prefix = f"{key_prefix}_{day_name}"
+
   current_slots = [
       x
       for x in st.session_state.schedule
@@ -467,7 +523,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       df_view,
       num_rows="dynamic",
       use_container_width=True,
-      key=f"editor_{key_prefix}_{day_name}",
+      key=f"editor_{prefix}",
       column_config={
           "Uhrzeit": st.column_config.TextColumn(
               "Uhrzeit (z. B. 20:15 - 20:45)", required=True
@@ -495,8 +551,8 @@ def render_day_matrix_editor(day_name, category, key_prefix):
   )
 
   if st.button(
-      f"💾 Änderungen für {day_name} speichern",
-      key=f"btn_save_tbl_{key_prefix}_{day_name}",
+      f"💾 Tabellenänderungen für {day_name} speichern",
+      key=f"btn_save_tbl_{prefix}",
       type="primary",
   ):
     remaining_slots = [
@@ -515,7 +571,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       fmt = st.session_state.series_db.get(
           show_name
       ) or FILLER_DATABASE.get(show_name)
-
       if fmt:
         if not row.get("Netto") or row.get("Netto") == 0:
           row["Netto"] = int(fmt["net"])
@@ -534,6 +589,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
     st.success(f"Matrix für {day_name} erfolgreich aktualisiert!")
     st.rerun()
 
+  # --- EXPANDER 1: NEUE SENDUNG DIREKT IN DIESEN TAG EINPLANEN ---
   with st.expander(
       f"➕ Neue Sendung / Serienblock direkt einplanen ({day_name})",
       expanded=False,
@@ -553,10 +609,17 @@ def render_day_matrix_editor(day_name, category, key_prefix):
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
+      # Initialisierung für diesen Prefix
+      if f"{prefix}_show" not in st.session_state:
+        st.session_state[f"{prefix}_show"] = all_shows_list[0]
+        on_show_change(prefix)
+
       p_show = st.selectbox(
           "Format / Sendung",
           all_shows_list,
-          key=f"local_show_{key_prefix}_{day_name}",
+          key=f"{prefix}_show",
+          on_change=on_show_change,
+          args=(prefix,),
       )
 
       if p_show in st.session_state.series_db:
@@ -567,34 +630,54 @@ def render_day_matrix_editor(day_name, category, key_prefix):
         is_filler = True
 
       if not is_filler:
+        avail_seasons = list(fmt_info["seasons"].keys())
+        if st.session_state.get(f"{prefix}_season") not in avail_seasons:
+          st.session_state[f"{prefix}_season"] = avail_seasons[0]
+
         p_season = st.selectbox(
             "Staffel",
-            list(fmt_info["seasons"].keys()),
-            key=f"local_season_{key_prefix}_{day_name}",
+            avail_seasons,
+            key=f"{prefix}_season",
+            on_change=on_season_change,
+            args=(prefix,),
         )
 
-        suggested_ep, missing_eps, next_ep = get_episode_synchronization(
-            p_show, p_season
-        )
+        (
+            sugg_ep,
+            missing_eps,
+            next_ep,
+            premiered_list,
+            max_season_eps,
+            is_complete,
+        ) = get_episode_synchronization(p_show, p_season)
 
-        if missing_eps:
+        # Sicherstellen, dass die vorgeschlagene Folge im State liegt
+        if f"{prefix}_ep" not in st.session_state:
+          st.session_state[f"{prefix}_ep"] = sugg_ep
+
+        if is_complete:
+          st.warning(
+              f"⚠️ **Staffel {p_season} ist komplett verplant"
+              f" ({len(premiered_list)}/{max_season_eps} Folgen)!**"
+          )
+        elif missing_eps:
           st.info(
               f"💡 **Lücke erkannt!** Folge **`{missing_eps[0]}`** fehlt und"
-              " wird vorgeschlagen."
+              " wurde automatisch eingesetzt."
           )
         else:
-          st.caption(f"📌 Nächste fortlaufende Folge: `{next_ep}`")
+          max_txt = f" von {max_season_eps}" if max_season_eps else ""
+          st.caption(
+              f"📌 Bislang verplant: `{premiered_list}` (Nächste Folge:"
+              f" **{next_ep}**{max_txt})"
+          )
 
-        dyn_ep_key = (
-            f"local_ep_{key_prefix}_{day_name}_{p_show}_{p_season}_{len(st.session_state.schedule)}_{suggested_ep}"
-        )
         p_episode = st.number_input(
             "Start-Episodennummer",
             min_value=1,
             max_value=10000,
-            value=suggested_ep,
+            key=f"{prefix}_ep",
             step=1,
-            key=dyn_ep_key,
         )
       else:
         p_season = 2026
@@ -605,22 +688,18 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       p_start_time = st.time_input(
           "Startzeit (Automatisch folgend)",
           value=time(default_h, default_m),
-          key=f"local_time_{key_prefix}_{day_name}",
+          key=f"{prefix}_time",
       )
       p_count = st.selectbox(
-          "Anzahl Folgen nacheinander",
-          list(range(1, 6)),
-          key=f"local_count_{key_prefix}_{day_name}",
+          "Anzahl Folgen nacheinander", list(range(1, 6)), key=f"{prefix}_count"
       )
       p_status = st.selectbox(
-          "Status",
-          STATUS_OPTIONS,
-          key=f"local_status_{key_prefix}_{day_name}",
+          "Status", STATUS_OPTIONS, key=f"{prefix}_status"
       )
 
       p_mo_fr = st.checkbox(
           "Diesen Block für Montag bis Freitag (Mo-Fr) übernehmen",
-          key=f"local_mofr_{key_prefix}_{day_name}",
+          key=f"{prefix}_mofr",
       )
 
     p_net = fmt_info["net"]
@@ -634,7 +713,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
 
     if st.button(
         f"➕ Block für {day_name} einfügen",
-        key=f"local_btn_add_{key_prefix}_{day_name}",
+        key=f"btn_add_{prefix}",
         type="primary",
     ):
       target_days = (
@@ -663,16 +742,19 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               "Gesamt": p_total,
               "Status": p_status,
           })
-          if not is_filler:
+          if not is_filler and p_status != "Wiederholung":
             curr_ep_counter += 1
 
       st.session_state.schedule.extend(new_entries)
       save_data(
           st.session_state.schedule, st.session_state.acknowledged_warnings
       )
+      # Synchronisation direkt aktualisieren
+      on_show_change(prefix)
       st.success("Sendeplätze erfolgreich synchronisiert und gespeichert!")
       st.rerun()
 
+  # --- EXPANDER 2: FEINTUNER ---
   with st.expander(
       f"🛠️ Sendeplatz-Feintuner (Details anpassen) ({day_name})",
       expanded=False,
@@ -686,9 +768,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
           for i, item in enumerate(current_slots)
       ]
       selected_label = st.selectbox(
-          "Programmpunkt zum Anpassen auswählen",
-          options_labels,
-          key=f"ft_sel_{key_prefix}_{day_name}",
+          "Programmpunkt auswählen", options_labels, key=f"ft_sel_{prefix}"
       )
       selected_sub_idx = options_labels.index(selected_label)
       current_item = current_slots[selected_sub_idx]
@@ -716,10 +796,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             else 0
         )
         new_show = st.selectbox(
-            "Sendung / Format",
-            all_shows_list,
-            index=show_idx,
-            key=f"ft_show_{key_prefix}_{day_name}",
+            "Sendung / Format", all_shows_list, index=show_idx, key=f"ft_show_{prefix}"
         )
 
         col_st, col_ep = st.columns(2)
@@ -730,7 +807,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               max_value=3000,
               value=int(current_item.get("Staffel", 1)),
               step=1,
-              key=f"ft_seas_{key_prefix}_{day_name}",
+              key=f"ft_seas_{prefix}",
           )
         with col_ep:
           new_ep = st.number_input(
@@ -739,7 +816,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               max_value=10000,
               value=int(current_item.get("Ep.", 1)),
               step=1,
-              key=f"ft_ep_{key_prefix}_{day_name}",
+              key=f"ft_ep_{prefix}",
           )
 
       with col_ft2:
@@ -751,9 +828,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
           curr_h, curr_m = 20, 15
 
         new_time_val = st.time_input(
-            "Startzeit",
-            value=time(curr_h, curr_m),
-            key=f"ft_time_{key_prefix}_{day_name}",
+            "Startzeit", value=time(curr_h, curr_m), key=f"ft_time_{prefix}"
         )
 
         fmt_spec = st.session_state.series_db.get(
@@ -770,7 +845,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             max_value=60,
             value=int(current_item.get("Werbung", default_ad)),
             step=1,
-            key=f"ft_ad_{key_prefix}_{day_name}",
+            key=f"ft_ad_{prefix}",
         )
 
         curr_status = current_item.get("Status", "Erstausstrahlung")
@@ -783,7 +858,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             "Status",
             STATUS_OPTIONS,
             index=status_idx,
-            key=f"ft_status_{key_prefix}_{day_name}",
+            key=f"ft_status_{prefix}",
         )
 
       fixed_net = (
@@ -810,7 +885,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
 
       if st.button(
           "💾 Sendeplatz aktualisieren",
-          key=f"ft_save_btn_{key_prefix}_{day_name}",
+          key=f"ft_save_btn_{prefix}",
           type="primary",
       ):
         if global_idx is not None and global_idx < len(
@@ -830,6 +905,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
           st.success("Sendeplatz erfolgreich aktualisiert!")
           st.rerun()
 
+  # --- EXPANDER 3: LÖSCHEN MIT SOFORTIGER FREIGABE ---
   with st.expander(
       f"🗑️ Sendeplätze & Episoden verwalten / löschen ({day_name})",
       expanded=False,
@@ -838,8 +914,8 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       st.info(f"Keine Sendeplätze für {day_name} vorhanden.")
     else:
       st.markdown(
-          "Das Löschen eines Sendeplatzes gibt die Episodennummer sofort wieder"
-          " für künftige Planungen frei."
+          "Das Löschen gibt die Episodennummer sofort wieder für die Planung"
+          " frei."
       )
       for idx, row in enumerate(current_slots):
         col_m1, col_m2 = st.columns([5, 1])
@@ -851,7 +927,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               " Min.]"
           )
         with col_m2:
-          if st.button("❌ Löschen", key=f"del_{key_prefix}_{day_name}_{idx}"):
+          if st.button("❌ Löschen", key=f"del_{prefix}_{idx}"):
             if row in st.session_state.schedule:
               st.session_state.schedule.remove(row)
             else:
@@ -868,10 +944,12 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                 st.session_state.schedule,
                 st.session_state.acknowledged_warnings,
             )
+            on_show_change(prefix)
             st.success(f"'{row['Sendung']}' entfernt und Episode freigegeben!")
             st.rerun()
 
 
+# --- HAUPTREITER ---
 tab_builder, tab_prime, tab_day, tab_night, tab_week, tab_db = st.tabs([
     "⚡ Schnell-Planer (Serien & Blöcke)",
     "⭐ Primetime (20:00 - 02:00)",
@@ -887,17 +965,26 @@ tab_builder, tab_prime, tab_day, tab_night, tab_week, tab_db = st.tabs([
 with tab_builder:
   st.subheader("⚡ Übergeordneter Schnell-Planer (Mehrtägige Serienstrecken)")
   st.markdown(
-      "Automatisierte Belegung fortlaufender Episoden über Wochentage hinweg"
-      " (z. B. Mo–Fr Strips oder Wochenendblöcke)."
+      "Plane Serienfolgen oder Wochentagsschienen (z. B. Mo–Fr Strips oder"
+      " Wochenende) automatisiert über mehrere Tage hinweg ein."
   )
 
   col_b1, col_b2 = st.columns(2)
   with col_b1:
     b_day_selection = st.selectbox(
-        "Wochentag / Block", DAY_BLOCK_OPTIONS, key="global_builder_day"
+        "Wochentag / Block", DAY_BLOCK_OPTIONS, key="global_b_day"
     )
+
+    if "global_b_show" not in st.session_state:
+      st.session_state["global_b_show"] = all_shows_list[0]
+      on_show_change("global_b")
+
     b_show = st.selectbox(
-        "Format / Sendung", all_shows_list, key="global_builder_show"
+        "Format / Sendung",
+        all_shows_list,
+        key="global_b_show",
+        on_change=on_show_change,
+        args=("global_b",),
     )
 
     if b_show in st.session_state.series_db:
@@ -908,64 +995,76 @@ with tab_builder:
       b_is_filler = True
 
     if not b_is_filler:
+      avail_b_seasons = list(b_fmt_info["seasons"].keys())
+      if st.session_state.get("global_b_season") not in avail_b_seasons:
+        st.session_state["global_b_season"] = avail_b_seasons[0]
+
       b_season = st.selectbox(
           "Staffel",
-          list(b_fmt_info["seasons"].keys()),
-          key="global_builder_season",
+          avail_b_seasons,
+          key="global_b_season",
+          on_change=on_season_change,
+          args=("global_b",),
       )
 
-      b_suggested_ep, b_missing_eps, b_next_consecutive = (
-          get_episode_synchronization(b_show, b_season)
-      )
+      (
+          b_sugg_ep,
+          b_missing_eps,
+          b_next_ep,
+          b_premiered,
+          b_max_eps,
+          b_is_complete,
+      ) = get_episode_synchronization(b_show, b_season)
 
-      existing_eps_list = sorted(
-          list(
-              set(
-                  int(x["Ep."])
-                  for x in st.session_state.schedule
-                  if x.get("Sendung") == b_show
-                  and int(x.get("Staffel", 1)) == int(b_season)
-              )
-          )
-      )
+      if "global_b_ep" not in st.session_state:
+        st.session_state["global_b_ep"] = b_sugg_ep
 
-      st.markdown("##### 🔢 Episodenstatus im aktuellen Sendeplan")
-      if existing_eps_list:
-        st.info(f"📌 Bereits verplant: Folgen `{existing_eps_list}`")
-      else:
-        st.info(f"📌 Bislang keine Folgen von '{b_show}' eingeplant.")
-
-      if b_missing_eps:
+      st.markdown("##### 🔢 Status & Synchronisation")
+      if b_is_complete:
         st.warning(
-            f"⚠️ **Freie Lücke:** Episode(n) **`{b_missing_eps}`** fehlen im"
-            " Ablauf!"
+            f"⚠️ **Staffel {b_season} ist vollständig verplant**"
+            f" ({len(b_premiered)}/{b_max_eps} Folgen)!"
         )
-
-      dyn_global_ep_key = (
-          f"global_ep_{b_show}_{b_season}_{len(st.session_state.schedule)}_{b_suggested_ep}"
-      )
+      elif b_missing_eps:
+        st.info(
+            f"💡 **Lücke erkannt!** Folge **`{b_missing_eps[0]}`** fehlt im"
+            " Plan und wird vorgeschlagen."
+        )
+      else:
+        max_txt = f" von {b_max_eps}" if b_max_eps else ""
+        st.caption(
+            f"📌 Bereits im Plan: `{b_premiered}` (Nächste reguläre Folge:"
+            f" **{b_next_ep}**{max_txt})"
+        )
 
       col_btn_gap, col_btn_next = st.columns(2)
       with col_btn_gap:
         if b_missing_eps:
-          st.caption(f"Lückenschluss priorisiert: Folge {b_missing_eps[0]}")
-        else:
-          st.caption("Ablauf ist lückenlos.")
+          if st.button(
+              f"↩️ Lücke Folge {b_missing_eps[0]} wählen",
+              key="btn_pick_gap_global",
+          ):
+            st.session_state["global_b_ep"] = b_missing_eps[0]
+            st.rerun()
       with col_btn_next:
-        st.caption(f"Nächste Fortsetzungsfolge: {b_next_consecutive}")
+        if st.button(
+            f"➡️ Fortsetzen: Folge {b_next_ep} wählen",
+            key="btn_pick_next_global",
+        ):
+          st.session_state["global_b_ep"] = b_next_ep
+          st.rerun()
 
       b_episode = st.number_input(
           "Start-Episodennummer",
           min_value=1,
           max_value=10000,
-          value=b_suggested_ep,
+          key="global_b_ep",
           step=1,
-          key=dyn_global_ep_key,
       )
     else:
       b_season = 2026
       b_episode = 1
-      st.info("💡 Smart Filler Format (keine Episodenverwaltung nötig).")
+      st.info("💡 Filler-Format (keine Episodennummer erforderlich).")
 
   with col_b2:
     suggested_start_time = time(20, 15)
@@ -988,15 +1087,15 @@ with tab_builder:
           pass
 
     b_start_time = st.time_input(
-        "Startzeit", value=suggested_start_time, key="global_builder_time"
+        "Startzeit", value=suggested_start_time, key="global_b_time"
     )
     b_count = st.selectbox(
         "Anzahl Folgen pro Tag nacheinander",
         list(range(1, 6)),
-        key="global_builder_count",
+        key="global_b_count",
     )
     b_status = st.selectbox(
-        "Status", STATUS_OPTIONS, key="global_builder_status"
+        "Status", STATUS_OPTIONS, key="global_b_status"
     )
 
     b_net = b_fmt_info["net"]
@@ -1009,7 +1108,7 @@ with tab_builder:
 
   if st.button(
       "🚀 Serienblock in den Gesamtsendeplan einspeisen",
-      key="global_builder_submit_btn",
+      key="global_b_submit_btn",
       type="primary",
   ):
     if b_day_selection == "Montag bis Freitag (Mo-Fr)":
@@ -1025,9 +1124,7 @@ with tab_builder:
     current_ep_counter = int(b_episode)
 
     for day_name in target_days:
-      current_day_time = b_start_time
-      current_dt = datetime.combine(datetime.today(), current_day_time)
-
+      current_dt = datetime.combine(datetime.today(), b_start_time)
       for _ in range(b_count):
         start_str = current_dt.strftime("%H:%M")
         current_dt += timedelta(minutes=b_total)
@@ -1044,11 +1141,12 @@ with tab_builder:
             "Gesamt": b_total,
             "Status": b_status,
         })
-        if not b_is_filler:
+        if not b_is_filler and b_status != "Wiederholung":
           current_ep_counter += 1
 
     st.session_state.schedule.extend(added_entries)
     save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
+    on_show_change("global_b")
     st.success(
         f"Erfolgreich {len(added_entries)} Sendeplätze über {len(target_days)}"
         " Tag(e) hinweg eingeplant!"
@@ -1090,7 +1188,7 @@ with tab_day:
 # ==============================================================================
 with tab_night:
   st.subheader("🌙 Nachtprogramm-Matrix (ab 02:00 Uhr bis 06:00 Uhr)")
-  st.markdown("Late-Night, Wiederholungsstrecken und Dokumentationen:")
+  st.markdown("Late-Night, Wiederholungsstrecken und Dokumentationen ab 02:00:")
 
   night_day_tabs = st.tabs(WEEKDAYS)
   for idx, day in enumerate(WEEKDAYS):
@@ -1099,7 +1197,7 @@ with tab_night:
       render_day_matrix_editor(day, "night", "night")
 
 # ==============================================================================
-# REITER 5: GESAMT-WOCHENÜBERSICHT & LIVE-PRÜFUNG
+# REITER 5: GESAMT-WOCHENÜBERSICHT, LIVE-PRÜFUNG & BACKUP
 # ==============================================================================
 with tab_week:
   st.subheader("📅 Gesamter Wochen-Sendeplan & Kollisionsprüfung")
@@ -1144,12 +1242,12 @@ with tab_week:
       for err in errors_found:
         st.error(f"❌ {err}")
     else:
-      st.success(
-          "✅ Datenkonsistenz verifiziert: Keine undefinierten Formate im"
-          " Plan."
-      )
+      st.success("✅ Alle Sendeplätze sind sauber und fehlerfrei eingetaktet.")
 
-    col_exp1, col_exp2 = st.columns(2)
+    st.markdown("---")
+    st.markdown("### 💾 Datensicherung, Cloud-Backup & Export")
+
+    col_exp1, col_exp2, col_exp3 = st.columns(3)
     with col_exp1:
       csv_export = pd.DataFrame(st.session_state.schedule).to_csv(
           index=False
@@ -1157,15 +1255,62 @@ with tab_week:
       st.download_button(
           "📥 Sendeplan als CSV herunterladen",
           csv_export,
-          "sendeplan_v3.2.csv",
+          "sendeplan_export.csv",
           "text/csv",
+          use_container_width=True,
       )
+
     with col_exp2:
-      if st.button("🗑️ Gesamten Sendeplan leeren"):
+      json_backup = json.dumps(
+          {
+              "schedule": st.session_state.schedule,
+              "acknowledged_warnings": list(
+                  st.session_state.acknowledged_warnings
+              ),
+          },
+          indent=4,
+          ensure_ascii=False,
+      ).encode("utf-8")
+      st.download_button(
+          "💾 JSON-Backup herunterladen",
+          json_backup,
+          "sendeplan_backup.json",
+          "application/json",
+          use_container_width=True,
+      )
+
+    with col_exp3:
+      if st.button(
+          "🗑️ Gesamten Sendeplan leeren",
+          use_container_width=True,
+          type="secondary",
+      ):
         st.session_state.schedule = []
         st.session_state.acknowledged_warnings.clear()
         save_data([], set())
         st.rerun()
+
+    with st.expander("📥 Gesicherten Sendeplan wiederherstellen (JSON Upload)"):
+      uploaded_file = st.file_uploader(
+          "JSON-Backup auswählen", type=["json"], key="restore_uploader"
+      )
+      if uploaded_file is not None:
+        try:
+          content = json.load(uploaded_file)
+          if isinstance(content, dict) and "schedule" in content:
+            st.session_state.schedule = content["schedule"]
+            st.session_state.acknowledged_warnings = set(
+                content.get("acknowledged_warnings", [])
+            )
+          elif isinstance(content, list):
+            st.session_state.schedule = content
+          save_data(
+              st.session_state.schedule, st.session_state.acknowledged_warnings
+          )
+          st.success("Sendeplan erfolgreich wiederhergestellt!")
+          st.rerun()
+        except Exception as e:
+          st.error(f"Fehler beim Wiederherstellen: {e}")
   else:
     st.info("Der Sendeplan ist aktuell leer.")
 
