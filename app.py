@@ -841,7 +841,7 @@ with tab_matrix:
         st.error(f"❌ {err}")
     else:
       st.success(
-          "✅ **Keine Laufzeit- or Kollisionsfehler:** Alle Sendeplätze sind"
+          "✅ **Keine Laufzeit- oder Kollisionsfehler:** Alle Sendeplätze sind"
           " zeitlich sauber eingetaktet."
       )
 
@@ -998,7 +998,29 @@ with tab_builder:
       st.info("💡 Smart Filler Format (keine Episodennummer nötig).")
 
   with col_b2:
-    start_t = st.time_input("Startzeit", time(20, 15), key="builder_time")
+    # --- INTELLIGENTE STARTZEIT-VOREINSTELLUNG ---
+    # Prüfe, ob es für den gewählten Wochentag bereits Sendungen gibt und wann die letzte endet
+    suggested_time = time(20, 15)
+    if day_selection in WEEKDAYS:
+      day_sched = [x for x in st.session_state.schedule if x["Wochentag"] == day_selection]
+      if day_sched:
+        # Finde das späteste Ende an diesem Tag
+        latest_end = "00:00"
+        for slot in day_sched:
+          try:
+            end_t_str = slot["Uhrzeit"].split(" - ")[1]
+            if end_t_str > latest_end:
+              latest_end = end_t_str
+          except:
+            pass
+        if latest_end != "00:00":
+          try:
+            h, m = map(int, latest_end.split(":"))
+            suggested_time = time(h, m)
+          except:
+            pass
+
+    start_t = st.time_input("Startzeit (Automatisch im Anschluss)", value=suggested_time, key="builder_time")
     count = st.selectbox(
         "Anzahl Folgen nacheinander", list(range(1, 6)), key="builder_count"
     )
@@ -1031,7 +1053,27 @@ with tab_builder:
     current_ep = int(episode)
 
     for day_name in target_days:
-      current_dt = datetime.combine(datetime.today(), start_t)
+      # Für den Fall, dass für jeden Tag separat die Zeit anhand des letzten Slots ermittelt werden soll:
+      day_specific_time = start_t
+      if day_selection == "Montag bis Sonntag (Ganze Woche)" or day_selection == "Montag bis Freitag (Mo-Fr)":
+        day_sched = [x for x in st.session_state.schedule if x["Wochentag"] == day_name]
+        if day_sched:
+          latest_end = "00:00"
+          for slot in day_sched:
+            try:
+              end_t_str = slot["Uhrzeit"].split(" - ")[1]
+              if end_t_str > latest_end:
+                latest_end = end_t_str
+            except:
+              pass
+          if latest_end != "00:00":
+            try:
+              h, m = map(int, latest_end.split(":"))
+              day_specific_time = time(h, m)
+            except:
+              pass
+
+      current_dt = datetime.combine(datetime.today(), day_specific_time)
       for i in range(count):
         start_str = current_dt.strftime("%H:%M")
         current_dt += timedelta(minutes=total_block)
