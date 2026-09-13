@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.3
-SAVE_FILE = "sendeplan_v4.3.json"
+# Dateipfad für Version 4.4
+SAVE_FILE = "sendeplan_v4.4.json"
 FORMATS_FILE = "formats_v4.3.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.3 | Broadcast Direktion",
+    page_title="Master Control v4.4 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.3) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.4) ---
 st.markdown(
     """
     <style>
@@ -130,7 +130,11 @@ WEEKDAYS = [
     "Samstag",
     "Sonntag",
 ]
-DAY_OPTIONS = WEEKDAYS + ["Montag bis Freitag (Mo-Fr)"]
+DAY_OPTIONS = (
+    WEEKDAYS
+    + ["Montag bis Freitag (Mo-Fr)"]
+    + ["Montag bis Sonntag (Ganze Woche)"]
+)
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
@@ -180,12 +184,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.3 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.4 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v4.2.json" if os.path.exists("sendeplan_v4.2.json") else None)
+      else ("sendeplan_v4.3.json" if os.path.exists("sendeplan_v4.3.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -248,10 +252,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.3: Programm-Direktion")
+st.title("📡 Master Control v4.4: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.3)** — Format-Editor (Bearbeiten & Löschen), Live-State"
-    " & Smart Filler."
+    "**Broadcast-Engine (v4.4)** — Automatischer Episoden-Sprung,"
+    " flexibler Wochentags-Block & Format-Editor."
 )
 
 total_items = len(st.session_state.schedule)
@@ -270,7 +274,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.3 Studio</div>
+            <div class="metric-value">v4.4 Live-State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -623,7 +627,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.3.csv",
+          "sendeplan_v4.4.csv",
           "text/csv",
       )
   else:
@@ -655,7 +659,8 @@ with tab_builder:
       season = st.selectbox(
           "Staffel", list(format_info["seasons"].keys()), key="builder_season"
       )
-      
+
+      # Automatische Ermittlung der nächsten freien Episodennummer
       existing_eps = [
           x["Ep."]
           for x in st.session_state.schedule
@@ -663,14 +668,18 @@ with tab_builder:
       ]
       next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
 
+      # Erzwinge Aktualisierung des Startwertes im Session State bei Format-/Staffelwechsel
       if (
           "builder_last_show" not in st.session_state
           or st.session_state.builder_last_show != show
           or "builder_last_season" not in st.session_state
           or st.session_state.builder_last_season != season
+          or "builder_sched_len" not in st.session_state
+          or st.session_state.builder_sched_len != len(st.session_state.schedule)
       ):
         st.session_state.builder_last_show = show
         st.session_state.builder_last_season = season
+        st.session_state.builder_sched_len = len(st.session_state.schedule)
         st.session_state.builder_ep_input = next_ep_suggestion
 
       episode = st.number_input(
@@ -725,6 +734,8 @@ with tab_builder:
 
     if day_selection == "Montag bis Freitag (Mo-Fr)":
       target_days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+    elif day_selection == "Montag bis Sonntag (Ganze Woche)":
+      target_days = WEEKDAYS
     else:
       target_days = [day_selection]
 
