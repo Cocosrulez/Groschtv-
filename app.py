@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.9
-SAVE_FILE = "sendeplan_v4.9.json"
-FORMATS_FILE = "formats_v4.9.json"
+# Dateipfad für Version 5.0
+SAVE_FILE = "sendeplan_v5.0.json"
+FORMATS_FILE = "formats_v5.0.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.9 | Broadcast Direktion",
+    page_title="Master Control v5.0 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.9) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V5.0) ---
 st.markdown(
     """
     <style>
@@ -49,6 +49,12 @@ st.markdown(
         font-size: 1.4rem;
         font-weight: 700;
         color: #f8fafc;
+    }
+    
+    /* Mini-Löschbutton Styling */
+    .stButton button {
+        border-radius: 4px;
+        font-size: 0.8rem;
     }
     </style>
 """,
@@ -214,12 +220,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.9 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v5.0 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v4.8.json" if os.path.exists("sendeplan_v4.8.json") else None)
+      else ("sendeplan_v4.9.json" if os.path.exists("sendeplan_v4.9.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -236,7 +242,6 @@ def load_data():
     except Exception:
       pass
 
-  # Korrektur direkt beim Laden: Tagesthemen & Tagesschau auf Staffel 2026 setzen
   for item in schedule:
     if item.get("Sendung") in ["Tagessthemen", "Tagesschau / News"] and item.get("Staffel") == 1:
       item["Staffel"] = 2026
@@ -287,10 +292,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.9: Programm-Direktion")
+st.title("📡 Master Control v5.0: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.9)** — Kompaktes Tabellen-Layout,"
-    " korrigierte Tagesthemen/Tagesschau (Staffel 2026) & intelligenter Episoden-Sync."
+    "**Broadcast-Engine (v5.0)** — Kompaktes Tabellen-Layout mit direktem"
+    " **×**-Löschbutton pro Episode, korrigierte Staffeln & Episoden-Sync."
 )
 
 total_items = len(st.session_state.schedule)
@@ -309,7 +314,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.9 Compact</div>
+            <div class="metric-value">v5.0 Inline-Delete</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -340,34 +345,71 @@ with tab_matrix:
       df = df.sort_values(by=["_sort", "Uhrzeit"]).drop(columns=["_sort"])
 
     st.markdown(
-        "Übersicht aller eingeplanten Sendeplätze. Du kannst Einträge über den"
-        " Feintuner oder untenstehende Verwaltung bearbeiten."
+        "Klicke in der Tabelle ganz rechts auf **×**, um eine Episode sofort"
+        " zu entfernen (die Episodennummer wird dadurch wieder freigegeben)."
     )
 
-    # Schönes, kompaktes DataFrame für die Hauptansicht
-    display_df = df[["Wochentag", "Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]].copy()
-    display_df.columns = ["Wochentag", "Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werb.", "Ges.", "Status"]
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Header für die kompakte Inline-Tabelle
+    h_cols = st.columns([1.2, 1.2, 2.2, 0.8, 0.8, 0.7, 0.7, 0.7, 1.3, 0.5])
+    with h_cols[0]:
+      st.markdown("**Tag**")
+    with h_cols[1]:
+      st.markdown("**Uhrzeit**")
+    with h_cols[2]:
+      st.markdown("**Sendung**")
+    with h_cols[3]:
+      st.markdown("**St.**")
+    with h_cols[4]:
+      st.markdown("**Ep.**")
+    with h_cols[5]:
+      st.markdown("**Netto**")
+    with h_cols[6]:
+      st.markdown("**Werb.**")
+    with h_cols[7]:
+      st.markdown("**Ges.**")
+    with h_cols[8]:
+      st.markdown("**Status**")
+    with h_cols[9]:
+      st.markdown("**×**")
 
-    st.markdown("---")
+    st.markdown(
+        "<hr style='margin: 0px 0px 10px 0px; border-color: rgba(255,255,255,0.1);'>"
+        "ziehung",
+        unsafe_allow_html=True,
+    )
 
-    # --- KOMPAKTE DIREKT-LÖSCHUNG IN TABELLENFORM ---
-    with st.expander("🗑️ Sendeplatz-Einzel-Löschung (❌)", expanded=True):
-      st.markdown(
-          "Wähle einen Sendeplatz aus und lösche ihn direkt mit einem Klick."
-      )
-      
-      for idx, row in df.iterrows():
-        col_l1, col_l2 = st.columns([5, 1])
-        with col_l1:
-          st.text(f"{row['Wochentag']} | {row['Uhrzeit']} – {row['Sendung']} (St. {row['Staffel']}, Ep. {row['Ep.']})")
-        with col_l2:
-          if st.button("❌ Löschen", key=f"del_matrix_{idx}"):
-            orig_idx = st.session_state.schedule.index(row.drop(labels=["_sort"], errors="ignore").to_dict())
-            st.session_state.schedule.pop(orig_idx)
-            save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-            st.success("Sendeplatz gelöscht & Episode freigegeben!")
-            st.rerun()
+    # Zeige jede Zeile mit einem winzigen Inline-Löschbutton
+    for idx, row in df.iterrows():
+      r_cols = st.columns([1.2, 1.2, 2.2, 0.8, 0.8, 0.7, 0.7, 0.7, 1.3, 0.5])
+      with r_cols[0]:
+        st.text(row["Wochentag"])
+      with r_cols[1]:
+        st.text(row["Uhrzeit"])
+      with r_cols[2]:
+        st.text(row["Sendung"])
+      with r_cols[3]:
+        st.text(row["Staffel"])
+      with r_cols[4]:
+        st.text(row["Ep."])
+      with r_cols[5]:
+        st.text(f"{row['Netto']}m")
+      with r_cols[6]:
+        st.text(f"{row['Werbung']}m")
+      with r_cols[7]:
+        st.text(f"{row['Gesamt']}m")
+      with r_cols[8]:
+        st.text(row["Status"])
+      with r_cols[9]:
+        if st.button("×", key=f"inline_del_{idx}", help="Diese Episode löschen"):
+          orig_idx = st.session_state.schedule.index(
+              row.drop(labels=["_sort"], errors="ignore").to_dict()
+          )
+          st.session_state.schedule.pop(orig_idx)
+          save_data(
+              st.session_state.schedule, st.session_state.acknowledged_warnings
+          )
+          st.success("Episode gelöscht & freigegeben!")
+          st.rerun()
 
     st.markdown("---")
 
@@ -662,7 +704,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.9.csv",
+          "sendeplan_v5.0.csv",
           "text/csv",
       )
   else:
