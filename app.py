@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.1 (Speichert Sendeplan & bestätigte Warnungen gemeinsam)
-SAVE_FILE = "sendeplan_v4.1.json"
-FORMATS_FILE = "formats_v3.0.json"
+# Dateipfad für Version 4.3
+SAVE_FILE = "sendeplan_v4.3.json"
+FORMATS_FILE = "formats_v4.3.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.1 | Broadcast Direktion",
+    page_title="Master Control v4.3 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.1) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.3) ---
 st.markdown(
     """
     <style>
@@ -180,12 +180,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.1 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.3 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v3.0.json" if os.path.exists("sendeplan_v3.0.json") else None)
+      else ("sendeplan_v4.2.json" if os.path.exists("sendeplan_v4.2.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -248,10 +248,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.1: Programm-Direktion")
+st.title("📡 Master Control v4.3: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.1)** — Permanente Fehler-Merkmale, direkte"
-    " Schnell-Löschung (❌) & Smart Filler."
+    "**Broadcast-Engine (v4.3)** — Format-Editor (Bearbeiten & Löschen), Live-State"
+    " & Smart Filler."
 )
 
 total_items = len(st.session_state.schedule)
@@ -270,7 +270,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.1 Persistent</div>
+            <div class="metric-value">v4.3 Studio</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -287,7 +287,7 @@ st.markdown("---")
 tab_matrix, tab_builder, tab_db = st.tabs([
     "📅 Wochen-Matrix & Editor",
     "⚡ Schnell-Planer (Neuer Slot)",
-    "📚 Format-Referenz & Neue Sendungen",
+    "📚 Format-Referenz & Bearbeitung",
 ])
 
 with tab_matrix:
@@ -430,7 +430,6 @@ with tab_matrix:
     slot_warnings = []
     gap_actions = []
 
-    # 1. Format- und Einzel-Slot Checks mit stabilen IDs
     for idx, row in enumerate(st.session_state.schedule):
       show_name = row["Sendung"]
       format_spec = st.session_state.series_db.get(show_name) or FILLER_DATABASE.get(show_name)
@@ -468,7 +467,6 @@ with tab_matrix:
               f"Das Sendezeitfenster umfasst **{slot_mins} Min.**, aber Netto ({row['Netto']} Min.) + Werbung ({row['Werbung']} Min.) ergeben **{expected_total} Min.**!"
           )
 
-        # Stabile ID für Rasterwarnung basierend auf Inhalt statt Listenindex
         is_exact, info_text = get_slot_grid_info(expected_total)
         warn_key = f"raster_{row['Wochentag']}_{row['Uhrzeit']}_{row['Sendung']}_Ep{row['Ep.']}"
         if not is_exact and warn_key not in st.session_state.acknowledged_warnings:
@@ -482,7 +480,6 @@ with tab_matrix:
             f"Formatierungsfehler in Zeile {idx+1}: Ungültiges Zeitformat."
         )
 
-    # 2. Tagesbasierte Kollisions- & Lückenprüfung mit stabilen IDs
     for day in WEEKDAYS:
       day_slots = [
           (i, row)
@@ -538,7 +535,6 @@ with tab_matrix:
           except Exception:
             pass
 
-    # Rendering Fehler
     if errors_found:
       for err in errors_found:
         st.error(f"❌ {err}")
@@ -548,7 +544,6 @@ with tab_matrix:
           " zeitlich sauber eingetaktet."
       )
 
-    # Rendering Warnungen mit permanentem Merken
     if slot_warnings:
       st.markdown("---")
       st.markdown("### ⚠️ Hinweise, Lücken & Raster-Abweichungen")
@@ -628,7 +623,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.1.csv",
+          "sendeplan_v4.3.csv",
           "text/csv",
       )
   else:
@@ -660,6 +655,7 @@ with tab_builder:
       season = st.selectbox(
           "Staffel", list(format_info["seasons"].keys()), key="builder_season"
       )
+      
       existing_eps = [
           x["Ep."]
           for x in st.session_state.schedule
@@ -667,14 +663,25 @@ with tab_builder:
       ]
       next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
 
+      if (
+          "builder_last_show" not in st.session_state
+          or st.session_state.builder_last_show != show
+          or "builder_last_season" not in st.session_state
+          or st.session_state.builder_last_season != season
+      ):
+        st.session_state.builder_last_show = show
+        st.session_state.builder_last_season = season
+        st.session_state.builder_ep_input = next_ep_suggestion
+
       episode = st.number_input(
           "Start-Episodennummer (Automatisch nächste freie Folge)",
           min_value=1,
           max_value=10000,
-          value=next_ep_suggestion,
+          value=st.session_state.get("builder_ep_input", next_ep_suggestion),
           step=1,
-          key="builder_ep",
+          key="builder_ep_input",
       )
+
       if existing_eps:
         st.info(
             f"📌 Bereits im Plan für '{show}' (Staffel {season}): Episoden"
@@ -725,11 +732,17 @@ with tab_builder:
     conflict_found = False
     conflicting_eps = []
 
+    existing_eps_check = [
+        x["Ep."]
+        for x in st.session_state.schedule
+        if x["Sendung"] == show and x["Staffel"] == season
+    ]
+
     if not is_filler and not override_lock:
       check_ep = current_ep
       for _ in target_days:
         for _ in range(count):
-          if check_ep in existing_eps:
+          if check_ep in existing_eps_check:
             conflict_found = True
             conflicting_eps.append(check_ep)
           check_ep += 1
@@ -783,6 +796,61 @@ with tab_db:
       for k, v in st.session_state.series_db.items()
   ]
   st.table(pd.DataFrame(db_rows))
+
+  st.markdown("---")
+  st.subheader("🛠️ Format bearbeiten oder löschen")
+
+  selected_format_to_edit = st.selectbox(
+      "Format ausählen", list(st.session_state.series_db.keys())
+  )
+  if selected_format_to_edit:
+    fmt_data = st.session_state.series_db[selected_format_to_edit]
+    with st.form("edit_format_form"):
+      col_ed1, col_ed2 = st.columns(2)
+      with col_ed1:
+        edit_genre = st.text_input("Genre", value=fmt_data.get("genre", ""))
+        edit_net = st.number_input(
+            "Netto-Laufzeit (Min. fix)",
+            min_value=1,
+            max_value=300,
+            value=int(fmt_data.get("net", 30)),
+        )
+      with col_ed2:
+        edit_ad = st.number_input(
+            "Standard-Werbezeit (Min.)",
+            min_value=0,
+            max_value=60,
+            value=int(fmt_data.get("ad", 6)),
+        )
+
+      col_sub1, col_sub2 = st.columns(2)
+      with col_sub1:
+        update_clicked = st.form_submit_button("💾 Format aktualisieren")
+      with col_sub2:
+        delete_format_clicked = st.form_submit_button("🗑️ Format löschen")
+
+      if update_clicked:
+        st.session_state.series_db[selected_format_to_edit][
+            "genre"
+        ] = edit_genre
+        st.session_state.series_db[selected_format_to_edit]["net"] = int(
+            edit_net
+        )
+        st.session_state.series_db[selected_format_to_edit]["ad"] = int(edit_ad)
+        save_formats(st.session_state.series_db)
+        st.success(
+            f"Format '{selected_format_to_edit}' erfolgreich aktualisiert!"
+        )
+        st.rerun()
+
+      if delete_format_clicked:
+        if len(st.session_state.series_db) > 1:
+          del st.session_state.series_db[selected_format_to_edit]
+          save_formats(st.session_state.series_db)
+          st.success(f"Format '{selected_format_to_edit}' wurde gelöscht!")
+          st.rerun()
+        else:
+          st.error("Die Datenbank muss mindestens ein Format enthalten.")
 
   st.markdown("---")
   st.subheader("➕ Neues Format / Sendung zur Datenbank hinzufügen")
