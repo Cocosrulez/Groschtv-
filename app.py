@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.7
-SAVE_FILE = "sendeplan_v4.7.json"
-FORMATS_FILE = "formats_v4.7.json"
+# Dateipfad für Version 4.8
+SAVE_FILE = "sendeplan_v4.8.json"
+FORMATS_FILE = "formats_v4.8.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.7 | Broadcast Direktion",
+    page_title="Master Control v4.8 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.7) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.8) ---
 st.markdown(
     """
     <style>
@@ -214,12 +214,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.7 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.8 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v4.6.json" if os.path.exists("sendeplan_v4.6.json") else None)
+      else ("sendeplan_v4.7.json" if os.path.exists("sendeplan_v4.7.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -236,7 +236,6 @@ def load_data():
     except Exception:
       pass
 
-  # Korrektur direkt beim Laden: Tagesthemen auf Staffel 2026 setzen
   for item in schedule:
     if item.get("Sendung") == "Tagessthemen" and item.get("Staffel") == 1:
       item["Staffel"] = 2026
@@ -287,10 +286,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.7: Programm-Direktion")
+st.title("📡 Master Control v4.8: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.7)** — Gezielte Episoden-Löschung (❌),"
-    " korrigierte Tagesthemen-Staffeln (2026) & Ganze-Woche-Modus."
+    "**Broadcast-Engine (v4.8)** — Integrierte Tabellen-Löschung (❌),"
+    " automatischer Episoden-Sync & Ganze-Woche-Modus."
 )
 
 total_items = len(st.session_state.schedule)
@@ -309,7 +308,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.7 Live-State</div>
+            <div class="metric-value">v4.8 Live-State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -333,41 +332,51 @@ with tab_matrix:
   st.subheader("Wochenübersicht & Sendeplan")
 
   if st.session_state.schedule:
+    # Bereite DataFrame vor und sortiere nach Wochentag & Uhrzeit
     df = pd.DataFrame(st.session_state.schedule)
     day_sorting = {d: i for i, d in enumerate(WEEKDAYS)}
     if "Wochentag" in df.columns:
       df["_sort"] = df["Wochentag"].map(day_sorting).fillna(9)
       df = df.sort_values(by=["_sort", "Uhrzeit"]).drop(columns=["_sort"])
 
-    st.dataframe(df, use_container_width=True)
+    # Wir fügen eine interaktive Spalte mit Löschbuttons hinzu oder zeigen die Tabelle direkt an
+    # In Streamlit iterieren wir durch die sortierten Einträge, um direkt ein ❌ dahinterzusetzen
+    st.markdown(
+        "Klicke bei einem Sendeplatz auf **❌**, um ihn sofort aus dem Plan"
+        " zu löschen (die Episoden werden dadurch automatisch wieder frei)."
+    )
 
-    st.markdown("---")
-
-    # --- DIREKTE SCHNELL-LÖSCHUNG (❌) FÜR JEDE EPISODE ---
-    with st.expander(
-        "🗑️ Schnell-Löschung & Sendeplatz-Verwaltung (❌)", expanded=True
-    ):
-      st.markdown(
-          "Hier kannst du einzelne Sendeplätze oder Episoden gezielt mit"
-          " einem Klick auf **❌ Löschen** aus dem Sendeplan entfernen."
-      )
-
-      for idx, item in enumerate(st.session_state.schedule):
-        col_q1, col_q2 = st.columns([5, 1])
-        with col_q1:
-          st.text(
-              f"#{idx+1}: {item['Wochentag']} | {item['Uhrzeit']} –"
-              f" {item['Sendung']} (St. {item['Staffel']}, Ep. {item['Ep.']})"
+    # Zeige die geordneten Sendeplätze in einer sauberen Schleife mit Lösch-Button
+    for idx, row in df.iterrows():
+      cols = st.columns([1.2, 1.2, 2, 0.8, 0.8, 0.8, 0.8, 1, 1.2, 0.6])
+      with cols[0]:
+        st.write(f"**{row['Wochentag']}**")
+      with cols[1]:
+        st.write(f"`{row['Uhrzeit']}`")
+      with cols[2]:
+        st.write(row["Sendung"])
+      with cols[3]:
+        st.write(f"St. {row['Staffel']}")
+      with cols[4]:
+        st.write(f"Ep. {row['Ep.']}")
+      with cols[5]:
+        st.write(f"{row['Netto']}m")
+      with cols[6]:
+        st.write(f"{row['Werbung']}m")
+      with cols[7]:
+        st.write(f"**{row['Gesamt']}m**")
+      with cols[8]:
+        st.caption(row["Status"])
+      with cols[9]:
+        if st.button("❌", key=f"del_row_{idx}", help="Sendeplatz löschen"):
+          # Finde den echten Index im rohen st.session_state.schedule
+          orig_idx = st.session_state.schedule.index(row.to_dict())
+          st.session_state.schedule.pop(orig_idx)
+          save_data(
+              st.session_state.schedule, st.session_state.acknowledged_warnings
           )
-        with col_q2:
-          if st.button("❌ Löschen", key=f"quick_del_{idx}"):
-            st.session_state.schedule.pop(idx)
-            save_data(
-                st.session_state.schedule,
-                st.session_state.acknowledged_warnings,
-            )
-            st.success("Sendeplatz / Episode entfernt!")
-            st.rerun()
+          st.success("Sendeplatz gelöscht & Episoden freigegeben!")
+          st.rerun()
 
     st.markdown("---")
 
@@ -662,7 +671,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.7.csv",
+          "sendeplan_v4.8.csv",
           "text/csv",
       )
   else:
@@ -875,32 +884,23 @@ with tab_db:
       new_show_name = st.text_input("Name der Sendung / Serie")
       new_genre = st.text_input("Genre (z. B. Sitcom, Dokumentation)")
     with col_f2:
-      new_net = st.number_input(
-          "Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30
-      )
-      new_ad = st.number_input(
-          "Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6
-      )
+      new_net = st.number_input(f"Netto-Laufzeit (Min. fix)", min_value=1, max_value=300, value=30)
+      new_ad = st.number_input("Standard-Werbezeit (Min.)", min_value=0, max_value=60, value=6)
 
     format_submitted = st.form_submit_button("Format in Datenbank speichern")
     if format_submitted:
       if new_show_name.strip():
         if new_show_name in st.session_state.series_db:
-          st.warning(
-              f"Das Format '{new_show_name}' existiert bereits in der Datenbank!"
-          )
+          st.warning(f"Das Format '{new_show_name}' existiert bereits in der Datenbank!")
         else:
           st.session_state.series_db[new_show_name] = {
               "genre": new_genre if new_genre else "Allgemein",
               "seasons": {1: 20},
               "net": int(new_net),
-              "ad": int(new_ad),
+              "ad": int(new_ad)
           }
           save_formats(st.session_state.series_db)
-          st.success(
-              f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft"
-              " gespeichert!"
-          )
+          st.success(f"Format '{new_show_name}' erfolgreich hinzugefügt und dauerhaft gespeichert!")
           st.rerun()
       else:
         st.error("Bitte gib einen gültigen Namen für das Format ein.")
