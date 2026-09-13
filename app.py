@@ -4,18 +4,18 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Dateipfad für Version 4.4
-SAVE_FILE = "sendeplan_v4.4.json"
-FORMATS_FILE = "formats_v4.3.json"
+# Dateipfad für Version 4.5
+SAVE_FILE = "sendeplan_v4.5.json"
+FORMATS_FILE = "formats_v4.5.json"
 
 # Seitenkonfiguration
 st.set_page_config(
-    page_title="Master Control v4.4 | Broadcast Direktion",
+    page_title="Master Control v4.5 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
 
-# --- MODERNES BROADCAST-CONTROL DESIGN (V4.4) ---
+# --- MODERNES BROADCAST-CONTROL DESIGN (V4.5) ---
 st.markdown(
     """
     <style>
@@ -61,6 +61,12 @@ DEFAULT_SERIES_DATABASE = {
         "genre": "Nachrichten",
         "seasons": {2026: 365},
         "net": 15,
+        "ad": 0,
+    },
+    "Tagessthemen": {
+        "genre": "Information",
+        "seasons": {2026: 365},
+        "net": 30,
         "ad": 0,
     },
     "Hacks": {
@@ -110,6 +116,30 @@ DEFAULT_SERIES_DATABASE = {
         "seasons": {1: 17, 2: 23},
         "net": 21,
         "ad": 9,
+    },
+    "Deutschland - 100!": {
+        "genre": "Information",
+        "seasons": {1: 20},
+        "net": 75,
+        "ad": 0,
+    },
+    "Deutschland - die reportage!": {
+        "genre": "Information",
+        "seasons": {1: 50},
+        "net": 30,
+        "ad": 0,
+    },
+    "Deutschland - die doku!": {
+        "genre": "Information",
+        "seasons": {1: 30},
+        "net": 45,
+        "ad": 0,
+    },
+    "Deutschlandmagazin": {
+        "genre": "Information",
+        "seasons": {1: 50},
+        "net": 45,
+        "ad": 0,
     },
 }
 
@@ -184,12 +214,12 @@ def get_slot_grid_info(total_mins):
     )
 
 
-# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.4 JSON) ---
+# --- PERSISTENZ (Sendeplan & Bestätigte Warnungen gemeinsam in v4.5 JSON) ---
 def load_data():
   target_file = (
       SAVE_FILE
       if os.path.exists(SAVE_FILE)
-      else ("sendeplan_v4.3.json" if os.path.exists("sendeplan_v4.3.json") else None)
+      else ("sendeplan_v4.4.json" if os.path.exists("sendeplan_v4.4.json") else None)
   )
   schedule = []
   acknowledged = set()
@@ -221,13 +251,277 @@ def load_data():
         },
         {
             "Wochentag": "Montag",
-            "Uhrzeit": "20:45 - 21:45",
+            "Uhrzeit": "21:15 - 22:15",
             "Sendung": "Breaking Bad",
             "Staffel": 1,
             "Ep.": 1,
             "Netto": 45,
             "Werbung": 15,
             "Gesamt": 60,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 1,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Dienstag",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 2,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Mittwoch",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 3,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Donnerstag",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 4,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Freitag",
+            "Uhrzeit": "20:00 - 20:15",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 5,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Samstag",
+            "Uhrzeit": "20:15 - 20:30",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 6,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Sonntag",
+            "Uhrzeit": "20:15 - 20:30",
+            "Sendung": "Tagesschau / News",
+            "Staffel": 2026,
+            "Ep.": 7,
+            "Netto": 15,
+            "Werbung": 0,
+            "Gesamt": 15,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "19:30 - 20:00",
+            "Sendung": "GZSZ",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 22,
+            "Werbung": 8,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Dienstag",
+            "Uhrzeit": "19:30 - 20:00",
+            "Sendung": "GZSZ",
+            "Staffel": 1,
+            "Ep.": 2,
+            "Netto": 22,
+            "Werbung": 8,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Mittwoch",
+            "Uhrzeit": "19:30 - 20:00",
+            "Sendung": "GZSZ",
+            "Staffel": 1,
+            "Ep.": 3,
+            "Netto": 22,
+            "Werbung": 8,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Donnerstag",
+            "Uhrzeit": "19:30 - 20:00",
+            "Sendung": "GZSZ",
+            "Staffel": 1,
+            "Ep.": 4,
+            "Netto": 22,
+            "Werbung": 8,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Freitag",
+            "Uhrzeit": "19:30 - 20:00",
+            "Sendung": "GZSZ",
+            "Staffel": 1,
+            "Ep.": 5,
+            "Netto": 22,
+            "Werbung": 8,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "20:45 - 21:15",
+            "Sendung": "Hacks",
+            "Staffel": 1,
+            "Ep.": 2,
+            "Netto": 24,
+            "Werbung": 6,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "22:15 - 23:30",
+            "Sendung": "Deutschland - 100!",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 75,
+            "Werbung": 0,
+            "Gesamt": 75,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "23:30 - 00:00",
+            "Sendung": "Deutschland - die reportage!",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Dienstag",
+            "Uhrzeit": "00:30 - 01:15",
+            "Sendung": "Deutschland - die doku!",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 45,
+            "Werbung": 0,
+            "Gesamt": 45,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Dienstag",
+            "Uhrzeit": "01:15 - 02:00",
+            "Sendung": "Deutschlandmagazin",
+            "Staffel": 1,
+            "Ep.": 1,
+            "Netto": 45,
+            "Werbung": 0,
+            "Gesamt": 45,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Montag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 1,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Dienstag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 2,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Mittwoch",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 3,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Donnerstag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 4,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Freitag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 5,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Samstag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 6,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
+            "Status": "Erstausstrahlung",
+        },
+        {
+            "Wochentag": "Sonntag",
+            "Uhrzeit": "00:00 - 00:30",
+            "Sendung": "Tagessthemen",
+            "Staffel": 2026,
+            "Ep.": 7,
+            "Netto": 30,
+            "Werbung": 0,
+            "Gesamt": 30,
             "Status": "Erstausstrahlung",
         },
     ]
@@ -252,10 +546,10 @@ if "schedule" not in st.session_state:
   st.session_state.acknowledged_warnings = loaded_ack
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v4.4: Programm-Direktion")
+st.title("📡 Master Control v4.5: Programm-Direktion")
 st.markdown(
-    "**Broadcast-Engine (v4.4)** — Automatischer Episoden-Sprung,"
-    " flexibler Wochentags-Block & Format-Editor."
+    "**Broadcast-Engine (v4.5)** — Integrierte Import-Sendungen,"
+    " Tagessthemen (Staffel 2026), Ganze-Woche-Modus & Smart Filler."
 )
 
 total_items = len(st.session_state.schedule)
@@ -274,7 +568,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Engine Core</div>
-            <div class="metric-value">v4.4 Live-State</div>
+            <div class="metric-value">v4.5 Live-State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -627,7 +921,7 @@ with tab_matrix:
       st.download_button(
           "📥 Bereinigten Sendeplan als CSV exportieren",
           csv_export,
-          "sendeplan_v4.4.csv",
+          "sendeplan_v4.5.csv",
           "text/csv",
       )
   else:
@@ -668,7 +962,6 @@ with tab_builder:
       ]
       next_ep_suggestion = max(existing_eps) + 1 if existing_eps else 1
 
-      # Erzwinge Aktualisierung des Startwertes im Session State bei Format-/Staffelwechsel
       if (
           "builder_last_show" not in st.session_state
           or st.session_state.builder_last_show != show
@@ -708,13 +1001,6 @@ with tab_builder:
     )
     plan_status = st.selectbox("Status", STATUS_OPTIONS, key="builder_status")
 
-    override_lock = st.checkbox(
-        "🔄 Bereits vergebene Episoden für Neuzugänge freischalten"
-        " (Überschreiben erlauben)",
-        value=False,
-        key="builder_override",
-    )
-
     net_time = format_info["net"]
     ad_time = format_info["ad"]
     total_block = net_time + ad_time
@@ -740,58 +1026,34 @@ with tab_builder:
       target_days = [day_selection]
 
     current_ep = int(episode)
-    conflict_found = False
-    conflicting_eps = []
 
-    existing_eps_check = [
-        x["Ep."]
-        for x in st.session_state.schedule
-        if x["Sendung"] == show and x["Staffel"] == season
-    ]
+    for day_name in target_days:
+      current_dt = datetime.combine(datetime.today(), start_t)
+      for i in range(count):
+        start_str = current_dt.strftime("%H:%M")
+        current_dt += timedelta(minutes=total_block)
+        end_str = current_dt.strftime("%H:%M")
 
-    if not is_filler and not override_lock:
-      check_ep = current_ep
-      for _ in target_days:
-        for _ in range(count):
-          if check_ep in existing_eps_check:
-            conflict_found = True
-            conflicting_eps.append(check_ep)
-          check_ep += 1
+        added_entries.append({
+            "Wochentag": day_name,
+            "Uhrzeit": f"{start_str} - {end_str}",
+            "Sendung": show,
+            "Staffel": season,
+            "Ep.": current_ep if not is_filler else 1,
+            "Netto": net_time,
+            "Werbung": ad_time,
+            "Gesamt": total_block,
+            "Status": plan_status,
+        })
+        if not is_filler:
+          current_ep += 1
 
-    if conflict_found and not override_lock:
-      st.error(
-          f"🚫 **Episoden-Sperre aktiv:** Die Episoden {list(set(conflicting_eps))}"
-          f" für '{show}' (Staffel {season}) sind bereits im Sendeplan"
-          " vorhanden! Aktiviere die Checkbox 'Überschreiben erlauben'."
-      )
-    else:
-      for day_name in target_days:
-        current_dt = datetime.combine(datetime.today(), start_t)
-        for i in range(count):
-          start_str = current_dt.strftime("%H:%M")
-          current_dt += timedelta(minutes=total_block)
-          end_str = current_dt.strftime("%H:%M")
-
-          added_entries.append({
-              "Wochentag": day_name,
-              "Uhrzeit": f"{start_str} - {end_str}",
-              "Sendung": show,
-              "Staffel": season,
-              "Ep.": current_ep if not is_filler else 1,
-              "Netto": net_time,
-              "Werbung": ad_time,
-              "Gesamt": total_block,
-              "Status": plan_status,
-          })
-          if not is_filler:
-            current_ep += 1
-
-      st.session_state.schedule.extend(added_entries)
-      save_data(
-          st.session_state.schedule, st.session_state.acknowledged_warnings
-      )
-      st.success("Erfolgreich eingeplant & gespeichert!")
-      st.rerun()
+    st.session_state.schedule.extend(added_entries)
+    save_data(
+        st.session_state.schedule, st.session_state.acknowledged_warnings
+    )
+    st.success("Erfolgreich eingeplant & gespeichert!")
+    st.rerun()
 
 with tab_db:
   st.subheader("📚 Verifizierte Formate & Standard-Laufzeiten")
