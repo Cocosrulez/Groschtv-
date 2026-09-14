@@ -356,10 +356,6 @@ def get_slot_grid_info(total_mins):
 
 
 def get_episode_synchronization(show, season):
-  """Ermittelt die nächste freie Episode unter Berücksichtigung von Lücken und Staffelgrenzen.
-
-  Wiederholungen verbrennen keine Erstausstrahlungs-Episoden!
-  """
   fmt = st.session_state.series_db.get(show)
   if not fmt:
     return 1, [], 1, [], None, False
@@ -367,7 +363,6 @@ def get_episode_synchronization(show, season):
   seasons_dict = fmt.get("seasons", {})
   max_season_eps = seasons_dict.get(int(season)) or seasons_dict.get(str(season))
 
-  # Nur Erstausstrahlungen / Live zählen als verbrauchte Episoden
   premiered = sorted(
       list(
           set(
@@ -406,7 +401,6 @@ def get_episode_synchronization(show, season):
 
 # --- REAKTIVE CALLBACKS BEI FORMAT- ODER STAFFELWECHSEL ---
 def on_show_change(prefix):
-  """Wird sofort ausgeführt, wenn der Nutzer im Dropdown eine andere Sendung wählt."""
   show = st.session_state.get(f"{prefix}_show")
   fmt = st.session_state.series_db.get(show)
   if fmt and "seasons" in fmt:
@@ -422,11 +416,25 @@ def on_show_change(prefix):
 
 
 def on_season_change(prefix):
-  """Wird sofort ausgeführt, wenn der Nutzer die Staffel wechselt."""
   show = st.session_state.get(f"{prefix}_show")
   season = st.session_state.get(f"{prefix}_season", 1)
   sugg, _, _, _, _, _ = get_episode_synchronization(show, season)
   st.session_state[f"{prefix}_ep"] = sugg
+
+
+def on_ft_show_change(prefix):
+  """Callback, wenn im Feintuner eine andere Sendung ausgewählt wird."""
+  ft_show_key = f"ft_show_{prefix}"
+  selected_show = st.session_state.get(ft_show_key)
+  fmt = st.session_state.series_db.get(selected_show)
+  if fmt and "seasons" in fmt:
+    avail_seasons = list(fmt["seasons"].keys())
+    st.session_state[f"ft_seas_{prefix}"] = avail_seasons[0]
+    sugg, _, _, _, _, _ = get_episode_synchronization(
+        selected_show, avail_seasons[0]
+    )
+    st.session_state[f"ft_ep_{prefix}"] = sugg
+    st.session_state[f"ft_ad_{prefix}"] = fmt["ad"]
 
 
 all_shows_list = list(st.session_state.series_db.keys()) + list(
@@ -595,10 +603,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       expanded=False,
   ):
     default_h, default_m = (
-        20,
-        15,
-    ) if category == "prime" else (
-        (6, 0) if category == "day" else (2, 0)
+        (20, 15) if category == "prime" else ((6, 0) if category == "day" else (2, 0))
     )
     if current_slots:
       try:
@@ -609,7 +614,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-      # Initialisierung für diesen Prefix
       if f"{prefix}_show" not in st.session_state:
         st.session_state[f"{prefix}_show"] = all_shows_list[0]
         on_show_change(prefix)
@@ -651,7 +655,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             is_complete,
         ) = get_episode_synchronization(p_show, p_season)
 
-        # Sicherstellen, dass die vorgeschlagene Folge im State liegt
         if f"{prefix}_ep" not in st.session_state:
           st.session_state[f"{prefix}_ep"] = sugg_ep
 
@@ -736,7 +739,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               "Uhrzeit": f"{s_str} - {e_str}",
               "Sendung": p_show,
               "Staffel": p_season,
-              "Ep.": curr_ep_counter if not is_filler else 1,
+              "Ep.": curr_ep_counter if not b_is_filler else 1,
               "Netto": p_net,
               "Werbung": p_ad,
               "Gesamt": p_total,
@@ -749,8 +752,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
       save_data(
           st.session_state.schedule, st.session_state.acknowledged_warnings
       )
-      # Synchronisation direkt aktualisieren
-      on_show_change(prefix)
       st.success("Sendeplätze erfolgreich synchronisiert und gespeichert!")
       st.rerun()
 
@@ -787,16 +788,32 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             global_idx = g_i
             break
 
+      # Initialisiere Session State für den Feintuner, falls neu gewählt oder geladen
+      ft_show_key = f"ft_show_{prefix}"
+      if (
+          ft_show_key not in st.session_state
+          or st.session_state.get(f"ft_last_sel_{prefix}") != selected_label
+      ):
+        st.session_state[f"ft_last_sel_{prefix}"] = selected_label
+        st.session_state[ft_show_key] = current_item.get(
+            "Sendung", all_shows_list[0]
+        )
+        st.session_state[f"ft_seas_{prefix}"] = int(
+            current_item.get("Staffel", 1)
+        )
+        st.session_state[f"ft_ep_{prefix}"] = int(current_item.get("Ep.", 1))
+        st.session_state[f"ft_ad_{prefix}"] = int(
+            current_item.get("Werbung", 6)
+        )
+
       col_ft1, col_ft2 = st.columns(2)
       with col_ft1:
-        curr_show = current_item.get("Sendung", all_shows_list[0])
-        show_idx = (
-            all_shows_list.index(curr_show)
-            if curr_show in all_shows_list
-            else 0
-        )
         new_show = st.selectbox(
-            "Sendung / Format", all_shows_list, index=show_idx, key=f"ft_show_{prefix}"
+            "Sendung / Format",
+            all_shows_list,
+            key=ft_show_key,
+            on_change=on_ft_show_change,
+            args=(prefix,),
         )
 
         col_st, col_ep = st.columns(2)
@@ -805,7 +822,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               "Staffel",
               min_value=1,
               max_value=3000,
-              value=int(current_item.get("Staffel", 1)),
               step=1,
               key=f"ft_seas_{prefix}",
           )
@@ -814,7 +830,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               "Episode",
               min_value=1,
               max_value=10000,
-              value=int(current_item.get("Ep.", 1)),
               step=1,
               key=f"ft_ep_{prefix}",
           )
@@ -834,16 +849,10 @@ def render_day_matrix_editor(day_name, category, key_prefix):
         fmt_spec = st.session_state.series_db.get(
             new_show
         ) or FILLER_DATABASE.get(new_show)
-        default_ad = (
-            fmt_spec["ad"]
-            if fmt_spec
-            else int(current_item.get("Werbung", 6))
-        )
         new_ad = st.number_input(
             "Werbung (Min.)",
             min_value=0,
             max_value=60,
-            value=int(current_item.get("Werbung", default_ad)),
             step=1,
             key=f"ft_ad_{prefix}",
         )
@@ -944,7 +953,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                 st.session_state.schedule,
                 st.session_state.acknowledged_warnings,
             )
-            on_show_change(prefix)
             st.success(f"'{row['Sendung']}' entfernt und Episode freigegeben!")
             st.rerun()
 
@@ -1146,7 +1154,6 @@ with tab_builder:
 
     st.session_state.schedule.extend(added_entries)
     save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-    on_show_change("global_b")
     st.success(
         f"Erfolgreich {len(added_entries)} Sendeplätze über {len(target_days)}"
         " Tag(e) hinweg eingeplant!"
