@@ -139,6 +139,60 @@ DEFAULT_SERIES_DATABASE = {
         "net": 45,
         "ad": 0,
     },
+    "Das perfekte Dinner": {
+        "genre": "Kochshow",
+        "seasons": {1: 200},
+        "net": 35,
+        "ad": 10,
+    },
+    "Ahornallee 1879": {
+        "genre": "Daily Soap",
+        "seasons": {1: 150},
+        "net": 25,
+        "ad": 5,
+    },
+    "Schillerstraße": {
+        "genre": "Daily Soap",
+        "seasons": {1: 100},
+        "net": 24,
+        "ad": 6,
+    },
+    "Exklusiv": {
+        "genre": "Magazin",
+        "seasons": {2026: 250},
+        "net": 16,
+        "ad": 4,
+    },
+    "Explosiv": {
+        "genre": "Magazin",
+        "seasons": {2026: 250},
+        "net": 12,
+        "ad": 3,
+    },
+    "Tagesschau (10 Minuten)": {
+        "genre": "Information",
+        "seasons": {2026: 365},
+        "net": 10,
+        "ad": 0,
+    },
+    "Punkt 12": {
+        "genre": "Magazin",
+        "seasons": {2026: 250},
+        "net": 94,
+        "ad": 26,
+    },
+    "Talk um 2": {
+        "genre": "Magazin",
+        "seasons": {1: 100},
+        "net": 47,
+        "ad": 13,
+    },
+    "Shopping Queen": {
+        "genre": "Unterhaltungssendung",
+        "seasons": {1: 200},
+        "net": 45,
+        "ad": 15,
+    },
 }
 
 FILLER_DATABASE = {
@@ -1369,7 +1423,6 @@ with tab_db:
       new_ad = int(row["Werbung (Min.)"])
       new_genre = row["Genre"]
 
-      # Bestehende Staffeln beibehalten
       old_format_data = st.session_state.series_db.get(fmt_name, {})
       seasons_data = old_format_data.get("seasons", {1: 20})
 
@@ -1383,7 +1436,6 @@ with tab_db:
     st.session_state.series_db = updated_db
     save_formats(updated_db)
 
-    # Automatische Synchronisation des Sendeplans
     for item in st.session_state.schedule:
       sh = item.get("Sendung")
       if sh in updated_db:
@@ -1395,7 +1447,6 @@ with tab_db:
         item["Werbung"] = f_ad
         item["Gesamt"] = f_total
 
-        # Uhrzeiten-String anhand der neuen Gesamtlänge anpassen
         try:
           start_str = item["Uhrzeit"].split(" - ")[0]
           h, m = map(int, start_str.split(":"))
