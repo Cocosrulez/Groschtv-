@@ -91,7 +91,16 @@ DAY_BLOCK_OPTIONS = WEEKDAYS + ["Montag bis Freitag (Mo-Fr)"] + ["Montag bis Son
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 def get_all_shows_list():
-    return list(st.session_state.series_db.keys()) + list(FILLER_DATABASE.keys())
+    db_shows = list(st.session_state.series_db.keys()) if "series_db" in st.session_state else list(DEFAULT_SERIES_DATABASE.keys())
+    return sorted(list(set(db_shows + list(FILLER_DATABASE.keys()))))
+
+def safe_int(val, default=0):
+    try:
+        if pd.isna(val) or val is None or val == "":
+            return default
+        return int(float(val))
+    except Exception:
+        return default
 
 # --- FORMATE LADEN & SPEICHERN ---
 def load_formats():
@@ -112,8 +121,7 @@ def load_formats():
                         db[k] = v
         except Exception:
             pass
-            
-    # Erzwinge korrekte Shopping Queen Werte (47 Netto + 13 Werbung = 60 Min Slot)
+
     if "Shopping Queen" in db:
         db["Shopping Queen"]["net"] = 47
         db["Shopping Queen"]["ad"] = 13
@@ -181,7 +189,7 @@ if "schedule" not in st.session_state:
     st.session_state.schedule = loaded_sched
     st.session_state.acknowledged_warnings = loaded_ack
 
-# --- HILFSFUNKTIONEN FÜR ZEITEN & EPISODEN-SYNC ---
+# --- ZEIT- & EPISODEN-ENGINE ---
 def get_slot_category(time_str):
     try:
         start_str = time_str.split(" - ")[0]
@@ -217,9 +225,9 @@ def get_episode_synchronization(show, season):
     max_season_eps = seasons_dict.get(int(season)) or seasons_dict.get(str(season))
     
     premiered = sorted(list(set(
-        int(x["Ep."]) for x in st.session_state.schedule 
+        safe_int(x.get("Ep.", 1), 1) for x in st.session_state.schedule 
         if x.get("Sendung") == show 
-        and int(x.get("Staffel", 1)) == int(season)
+        and safe_int(x.get("Staffel", 1), 1) == safe_int(season, 1)
         and x.get("Status") != "Wiederholung"
     )))
     
@@ -251,6 +259,20 @@ def shift_time_slot(time_str, minutes_offset):
         return f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
     except Exception:
         return time_str
+
+def parse_time_range(time_str):
+    try:
+        s, e = time_str.split(" - ")
+        sh, sm = map(int, s.split(":"))
+        eh, em = map(int, e.split(":"))
+        # TV-Sendetag Basis: 06:00 Uhr Morgens bis Folgetag 06:00
+        s_mins = (sh if sh >= 6 else sh + 24) * 60 + sm
+        e_mins = (eh if eh >= 6 else eh + 24) * 60 + em
+        if e_mins < s_mins:
+            e_mins += 24 * 60
+        return s_mins, e_mins
+    except Exception:
+        return None, None
 
 # --- REAKTIVE CALLBACKS ---
 def on_show_change(prefix):
@@ -286,10 +308,10 @@ def on_ft_show_change(prefix):
 
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.5: Programmschema-Direktion")
-st.markdown("**Broadcast Direktion Core** — Globaler Filter & Batch-Editor, reaktiver Serien-Sync, Formatbereinigung & Mehr-Tage-Schnellplaner.")
+st.markdown("**Broadcast Direktion Core** — Globaler Filter & Batch-Editor, reaktiver Serien-Sync, Staffelprüfung & Mehr-Tage-Schnellplaner.")
 
 total_items = len(st.session_state.schedule)
-total_mins = sum([x.get("Gesamt", 0) for x in st.session_state.schedule])
+total_mins = sum([safe_int(x.get("Gesamt", 0)) for x in st.session_state.schedule])
 
 st.markdown(f"""
     <div class="metric-grid">
@@ -314,7 +336,7 @@ st.markdown(f"""
 
 st.markdown("---")
 
-# --- WIEDERVERWENDBARER TAGES-MATRIX-EDITOR MIT DYNAMISCHER SENDUNGSAUSWAHL ---
+# --- WIEDERVERWENDBARER TAGES-MATRIX-EDITOR MIT SOFORT-SYNC ---
 def render_day_matrix_editor(day_name, category, key_prefix):
     prefix = f"{key_prefix}_{day_name}"
     current_shows = get_all_shows_list()
@@ -333,19 +355,18 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             
     current_slots.sort(key=get_start_mins)
     
+    cols = ["Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
     if current_slots:
         df_view = pd.DataFrame(current_slots)
-        cols = ["Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
         for c in cols:
             if c not in df_view.columns:
                 df_view[c] = ""
         df_view = df_view[cols]
     else:
-        df_view = pd.DataFrame(columns=["Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"])
+        df_view = pd.DataFrame(columns=cols)
 
-    # Verhindere Blanko-Zellen durch dynamischen Abgleich mit den aktuellen Optionen
-    existing_shows_in_df = df_view["Sendung"].dropna().unique().tolist()
-    valid_options = sorted(list(set(current_shows + existing_shows_in_df)))
+    existing_in_df = df_view["Sendung"].dropna().unique().tolist()
+    valid_options = sorted(list(set(current_shows + existing_in_df)))
 
     edited_df = st.data_editor(
         df_view,
@@ -370,30 +391,26 @@ def render_day_matrix_editor(day_name, category, key_prefix):
         new_slots = edited_df.to_dict(orient="records")
         for row in new_slots:
             row["Wochentag"] = day_name
-            show_name = row.get("Sendung")
+            show_name = str(row.get("Sendung") or valid_options[0])
+            row["Sendung"] = show_name
             fmt = st.session_state.series_db.get(show_name) or FILLER_DATABASE.get(show_name)
-            if fmt:
-                if not row.get("Netto") or row.get("Netto") == 0:
-                    row["Netto"] = int(fmt["net"])
-                if "Werbung" not in row or row.get("Werbung") is None:
-                    row["Werbung"] = int(fmt["ad"])
             
-            def safe_num(v, default=0):
-                try:
-                    if pd.isna(v) or v is None or v == "":
-                        return default
-                    return int(float(v))
-                except Exception:
-                    return default
-
-            net = safe_num(row.get("Netto"), 30)
-            ad = safe_num(row.get("Werbung"), 0)
-            row["Gesamt"] = net + ad
-            row["Netto"] = net
-            row["Werbung"] = ad
-            row["Staffel"] = safe_num(row.get("Staffel"), 1)
-            row["Ep."] = safe_num(row.get("Ep."), 1)
+            raw_net = safe_int(row.get("Netto"), 0)
+            raw_ad = safe_int(row.get("Werbung"), 0)
+            
+            if fmt:
+                if raw_net == 0:
+                    raw_net = int(fmt["net"])
+                if "Werbung" not in row or row.get("Werbung") is None:
+                    raw_ad = int(fmt["ad"])
+            
+            row["Netto"] = raw_net
+            row["Werbung"] = raw_ad
+            row["Gesamt"] = raw_net + raw_ad
+            row["Staffel"] = safe_int(row.get("Staffel"), 1)
+            row["Ep."] = safe_int(row.get("Ep."), 1)
             row["Status"] = str(row.get("Status") or "Erstausstrahlung")
+            row["Uhrzeit"] = str(row.get("Uhrzeit") or "20:15 - 20:45")
             
         st.session_state.schedule = remaining_slots + new_slots
         save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
@@ -524,7 +541,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                     if (s.get("Wochentag") == current_item.get("Wochentag") and 
                         s.get("Uhrzeit") == current_item.get("Uhrzeit") and 
                         s.get("Sendung") == current_item.get("Sendung") and 
-                        s.get("Ep.") == current_item.get("Ep.")):
+                        safe_int(s.get("Ep.")) == safe_int(current_item.get("Ep."))):
                         global_idx = g_i
                         break
 
@@ -532,9 +549,9 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             if ft_show_key not in st.session_state or st.session_state.get(f"ft_last_sel_{prefix}") != selected_label:
                 st.session_state[f"ft_last_sel_{prefix}"] = selected_label
                 st.session_state[ft_show_key] = current_item.get("Sendung", current_shows[0])
-                st.session_state[f"ft_seas_{prefix}"] = int(current_item.get("Staffel", 1))
-                st.session_state[f"ft_ep_{prefix}"] = int(current_item.get("Ep.", 1))
-                st.session_state[f"ft_ad_{prefix}"] = int(current_item.get("Werbung", 6))
+                st.session_state[f"ft_seas_{prefix}"] = safe_int(current_item.get("Staffel", 1), 1)
+                st.session_state[f"ft_ep_{prefix}"] = safe_int(current_item.get("Ep.", 1), 1)
+                st.session_state[f"ft_ad_{prefix}"] = safe_int(current_item.get("Werbung", 6), 6)
 
             col_ft1, col_ft2 = st.columns(2)
             with col_ft1:
@@ -562,7 +579,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                 status_idx = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
                 new_status = st.selectbox("Status", STATUS_OPTIONS, index=status_idx, key=f"ft_status_{prefix}")
 
-            fixed_net = fmt_spec["net"] if fmt_spec else int(current_item.get("Netto", 30))
+            fixed_net = fmt_spec["net"] if fmt_spec else safe_int(current_item.get("Netto", 30), 30)
             total_len = fixed_net + new_ad
             start_dt = datetime.combine(datetime.today(), new_time_val)
             end_dt = start_dt + timedelta(minutes=total_len)
@@ -577,12 +594,12 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             if st.button("💾 Sendeplatz aktualisieren", key=f"ft_save_btn_{prefix}", type="primary"):
                 if global_idx is not None and global_idx < len(st.session_state.schedule):
                     st.session_state.schedule[global_idx]["Sendung"] = new_show
-                    st.session_state.schedule[global_idx]["Staffel"] = int(new_season)
-                    st.session_state.schedule[global_idx]["Ep."] = int(new_ep)
+                    st.session_state.schedule[global_idx]["Staffel"] = safe_int(new_season, 1)
+                    st.session_state.schedule[global_idx]["Ep."] = safe_int(new_ep, 1)
                     st.session_state.schedule[global_idx]["Uhrzeit"] = new_time_str
-                    st.session_state.schedule[global_idx]["Netto"] = int(fixed_net)
-                    st.session_state.schedule[global_idx]["Werbung"] = int(new_ad)
-                    st.session_state.schedule[global_idx]["Gesamt"] = int(total_len)
+                    st.session_state.schedule[global_idx]["Netto"] = safe_int(fixed_net)
+                    st.session_state.schedule[global_idx]["Werbung"] = safe_int(new_ad)
+                    st.session_state.schedule[global_idx]["Gesamt"] = safe_int(total_len)
                     st.session_state.schedule[global_idx]["Status"] = new_status
                     save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
                     st.success("Sendeplatz erfolgreich aktualisiert!")
@@ -607,7 +624,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                                 if (s.get("Wochentag") == row.get("Wochentag") and 
                                     s.get("Uhrzeit") == row.get("Uhrzeit") and 
                                     s.get("Sendung") == row.get("Sendung") and 
-                                    s.get("Ep.") == row.get("Ep.")):
+                                    safe_int(s.get("Ep.")) == safe_int(row.get("Ep."))):
                                     st.session_state.schedule.pop(g_i)
                                     break
                         save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
@@ -626,7 +643,7 @@ tab_builder, tab_batch, tab_prime, tab_day, tab_night, tab_week, tab_db = st.tab
 ])
 
 # ==============================================================================
-# REITER 1: ÜBERGEORDNETER SCHNELL-PLANER (GLOBAL & MEHRTÄGIG)
+# REITER 1: ÜBERGEORDNETER SCHNELL-PLANER
 # ==============================================================================
 with tab_builder:
     st.subheader("⚡ Übergeordneter Schnell-Planer (Mehrtägige Serienstrecken)")
@@ -753,7 +770,7 @@ with tab_builder:
         st.rerun()
 
 # ==============================================================================
-# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG
+# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (V3.5 BATCH-EDITOR)
 # ==============================================================================
 with tab_batch:
     st.subheader("🔍 Globaler Filter & Sammelbearbeitung (Batch-Editor)")
@@ -826,7 +843,7 @@ with tab_batch:
                             curr_dt = datetime.combine(datetime.today(), new_batch_time)
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
-                                total_l = int(item.get("Gesamt", 30) or 30)
+                                total_l = safe_int(item.get("Gesamt", 30), 30)
                                 s_str = curr_dt.strftime("%H:%M")
                                 curr_dt += timedelta(minutes=total_l)
                                 e_str = curr_dt.strftime("%H:%M")
@@ -834,7 +851,7 @@ with tab_batch:
                         else:
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
-                                total_l = int(item.get("Gesamt", 30) or 30)
+                                total_l = safe_int(item.get("Gesamt", 30), 30)
                                 start_dt = datetime.combine(datetime.today(), new_batch_time)
                                 end_dt = start_dt + timedelta(minutes=total_l)
                                 item["Uhrzeit"] = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
@@ -846,7 +863,7 @@ with tab_batch:
                 with col_act3:
                     st.markdown("**⏱️ Relativ schieben**")
                     shift_offset = st.number_input("Minuten (+/-):", step=15, value=0, key="batch_shift_offset")
-                    if st.button("Verschieben", key="btn_apply_shift"):
+                    if st.button("Zeiten verschieben", key="btn_apply_shift"):
                         if shift_offset != 0:
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
@@ -867,11 +884,27 @@ with tab_batch:
                             st.success("Status geändert!")
                             st.rerun()
                     with col_b_del:
-                        if st.button("🗑️ Löschen", key="btn_delete_batch_items", type="secondary"):
+                        if st.button("🗑️ Alle löschen", key="btn_delete_batch_items", type="secondary"):
                             st.session_state.schedule = [item for i, item in enumerate(st.session_state.schedule) if i not in set(matching_indices)]
                             save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                            st.warning(f"{len(matching_indices)} Einträge gelöscht!")
+                            st.warning(f"{len(matching_indices)} Einträge wurden gelöscht!")
                             st.rerun()
+
+                st.markdown("---")
+                col_seq1, col_seq2 = st.columns([3, 1])
+                with col_seq1:
+                    start_seq_num = st.number_input("Episoden-Neunummerierung starten ab Folge:", min_value=1, value=1, step=1, key="batch_seq_start")
+                with col_seq2:
+                    st.write("")
+                    st.write("")
+                    if st.button("🔄 Episoden neu durchzählen", key="btn_resequence_eps"):
+                        curr_num = int(start_seq_num)
+                        for g_idx in matching_indices:
+                            st.session_state.schedule[g_idx]["Ep."] = curr_num
+                            curr_num += 1
+                        save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
+                        st.success("Episoden lückenlos neu durchnummeriert!")
+                        st.rerun()
 
             # 3. Detailansicht & Grid-Editor (Typ-gesichert)
             st.markdown("#### Detailansicht & Schnell-Korrektur")
@@ -909,15 +942,6 @@ with tab_batch:
                 updated_batch_records = edited_batch_df.to_dict(orient="records")
                 for local_i, global_i in enumerate(matching_indices):
                     row = updated_batch_records[local_i]
-                    
-                    def safe_int(val, default=0):
-                        try:
-                            if pd.isna(val) or val is None or val == "":
-                                return default
-                            return int(float(val))
-                        except Exception:
-                            return default
-
                     net = safe_int(row.get("Netto"), 30)
                     ad = safe_int(row.get("Werbung"), 0)
                     
@@ -977,7 +1001,7 @@ with tab_night:
             render_day_matrix_editor(day, "night", "night")
 
 # ==============================================================================
-# REITER 6: GESAMT-WOCHENÜBERSICHT, LIVE-PRÜFUNG & BACKUP
+# REITER 6: GESAMT-WOCHENÜBERSICHT & KOLLISIONSPRÜFUNG
 # ==============================================================================
 with tab_week:
     st.subheader("📅 Gesamter Wochen-Sendeplan & Kollisionsprüfung")
@@ -992,19 +1016,49 @@ with tab_week:
         disp_cols = ["Wochentag", "Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
         st.dataframe(df_all[[c for c in disp_cols if c in df_all.columns]], use_container_width=True, hide_index=True)
         
+        # Prüfung: Formate, Kollisionen & Sendelücken
         errors_found = []
+        warnings_found = []
+        
+        # 1. Format-Validierung
         for idx, row in enumerate(st.session_state.schedule):
             sh = row.get("Sendung")
             fmt = st.session_state.series_db.get(sh) or FILLER_DATABASE.get(sh)
             if not fmt:
                 errors_found.append(f"Sendeplatz #{idx+1} ({row.get('Wochentag')}): Unbekanntes Format '{sh}'.")
+
+        # 2. Timeline-Check (Kollisionen & Lücken)
+        for day in WEEKDAYS:
+            day_slots = [x for x in st.session_state.schedule if x.get("Wochentag") == day]
+            parsed_slots = []
+            for s in day_slots:
+                s_min, e_min = parse_time_range(s.get("Uhrzeit", ""))
+                if s_min is not None and e_min is not None:
+                    parsed_slots.append((s_min, e_min, s.get("Sendung", ""), s.get("Uhrzeit", "")))
+            
+            parsed_slots.sort(key=lambda x: x[0])
+            for i in range(len(parsed_slots) - 1):
+                cur_s, cur_e, cur_name, cur_time = parsed_slots[i]
+                next_s, next_e, next_name, next_time = parsed_slots[i+1]
                 
+                if next_s < cur_e:
+                    diff = cur_e - next_s
+                    errors_found.append(f"🚨 **{day}: Überlappung um {diff} Min.!** '{cur_name}' ({cur_time}) kollidiert mit '{next_name}' ({next_time}).")
+                elif next_s > cur_e:
+                    gap = next_s - cur_e
+                    warnings_found.append(f"ℹ️ **{day}: Sendelücke von {gap} Min.** zwischen '{cur_name}' ({cur_time}) und '{next_name}' ({next_time}).")
+
         if errors_found:
             for err in errors_found:
-                st.error(f"❌ {err}")
+                st.error(err)
         else:
-            st.success("✅ Alle Sendeplätze sind sauber und fehlerfrei eingetaktet.")
+            st.success("✅ Keine Formatfehler oder Sendeplatz-Kollisionen im aktuellen Wochenplan.")
             
+        if warnings_found:
+            with st.expander("⚠️ Erkannte Sendelücken im Programmschema"):
+                for w in warnings_found:
+                    st.warning(w)
+
         st.markdown("---")
         st.markdown("### 💾 Datensicherung, Cloud-Backup & Export")
         
