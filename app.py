@@ -74,7 +74,9 @@ DEFAULT_SERIES_DATABASE = {
     "Tagesschau (10 Minuten)": {"genre": "Information", "seasons": {2026: 365}, "net": 10, "ad": 0},
     "Punkt 12": {"genre": "Magazin", "seasons": {2026: 250}, "net": 94, "ad": 26},
     "Talk um 2": {"genre": "Magazin", "seasons": {1: 100}, "net": 47, "ad": 13},
-    "Shopping Queen": {"genre": "Unterhaltungssendung", "seasons": {1: 200}, "net": 45, "ad": 15},
+    "Shopping Queen": {"genre": "Unterhaltungssendung", "seasons": {1: 200}, "net": 47, "ad": 13},
+    "Das schnelle Kochen": {"genre": "Unterhaltungssendung", "seasons": {1: 100}, "net": 20, "ad": 5},
+    "Land, Spaß und Kulturelles": {"genre": "Magazin", "seasons": {1: 100}, "net": 23, "ad": 7},
 }
 
 FILLER_DATABASE = {
@@ -87,6 +89,9 @@ FILLER_DATABASE = {
 WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 DAY_BLOCK_OPTIONS = WEEKDAYS + ["Montag bis Freitag (Mo-Fr)"] + ["Montag bis Sonntag (Ganze Woche)"] + ["Wochenende (Sa-So)"]
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
+
+def get_all_shows_list():
+    return list(st.session_state.series_db.keys()) + list(FILLER_DATABASE.keys())
 
 # --- FORMATE LADEN & SPEICHERN ---
 def load_formats():
@@ -107,6 +112,12 @@ def load_formats():
                         db[k] = v
         except Exception:
             pass
+            
+    # Erzwinge korrekte Shopping Queen Werte (47 Netto + 13 Werbung = 60 Min Slot)
+    if "Shopping Queen" in db:
+        db["Shopping Queen"]["net"] = 47
+        db["Shopping Queen"]["ad"] = 13
+
     return db
 
 def save_formats(db):
@@ -273,11 +284,9 @@ def on_ft_show_change(prefix):
         st.session_state[f"ft_ep_{prefix}"] = sugg
         st.session_state[f"ft_ad_{prefix}"] = fmt["ad"]
 
-all_shows_list = list(st.session_state.series_db.keys()) + list(FILLER_DATABASE.keys())
-
 # --- HEADER & METRIKEN ---
 st.title("📡 Master Control v3.5: Programmschema-Direktion")
-st.markdown("**Broadcast Direktion Core** — Globaler Filter & Batch-Editor, reaktiver Serien-Sync, Staffelprüfung & Mehr-Tage-Schnellplaner.")
+st.markdown("**Broadcast Direktion Core** — Globaler Filter & Batch-Editor, reaktiver Serien-Sync, Formatbereinigung & Mehr-Tage-Schnellplaner.")
 
 total_items = len(st.session_state.schedule)
 total_mins = sum([x.get("Gesamt", 0) for x in st.session_state.schedule])
@@ -294,7 +303,7 @@ st.markdown(f"""
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Episoden-Engine</div>
-            <div class="metric-value">v3.5 Batch Sync</div>
+            <div class="metric-value">v3.5 Dynamic Grid</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -305,9 +314,10 @@ st.markdown(f"""
 
 st.markdown("---")
 
-# --- WIEDERVERWENDBARER TAGES-MATRIX-EDITOR MIT SOFORT-SYNC ---
+# --- WIEDERVERWENDBARER TAGES-MATRIX-EDITOR MIT DYNAMISCHER SENDUNGSAUSWAHL ---
 def render_day_matrix_editor(day_name, category, key_prefix):
     prefix = f"{key_prefix}_{day_name}"
+    current_shows = get_all_shows_list()
     
     current_slots = [x for x in st.session_state.schedule if x.get("Wochentag") == day_name and get_slot_category(x.get("Uhrzeit", "")) == category]
     
@@ -326,9 +336,16 @@ def render_day_matrix_editor(day_name, category, key_prefix):
     if current_slots:
         df_view = pd.DataFrame(current_slots)
         cols = ["Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
-        df_view = df_view[[c for c in cols if c in df_view.columns]]
+        for c in cols:
+            if c not in df_view.columns:
+                df_view[c] = ""
+        df_view = df_view[cols]
     else:
         df_view = pd.DataFrame(columns=["Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"])
+
+    # Verhindere Blanko-Zellen durch dynamischen Abgleich mit den aktuellen Optionen
+    existing_shows_in_df = df_view["Sendung"].dropna().unique().tolist()
+    valid_options = sorted(list(set(current_shows + existing_shows_in_df)))
 
     edited_df = st.data_editor(
         df_view,
@@ -337,7 +354,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
         key=f"editor_{prefix}",
         column_config={
             "Uhrzeit": st.column_config.TextColumn("Uhrzeit (z. B. 20:15 - 20:45)", required=True),
-            "Sendung": st.column_config.SelectboxColumn("Sendung / Format", options=all_shows_list, required=True),
+            "Sendung": st.column_config.SelectboxColumn("Sendung / Format", options=valid_options, required=True),
             "Status": st.column_config.SelectboxColumn("Status", options=STATUS_OPTIONS, required=True),
             "Staffel": st.column_config.NumberColumn("Staffel", min_value=1, step=1),
             "Ep.": st.column_config.NumberColumn("Ep.", min_value=1, step=1),
@@ -395,13 +412,13 @@ def render_day_matrix_editor(day_name, category, key_prefix):
 
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            if f"{prefix}_show" not in st.session_state:
-                st.session_state[f"{prefix}_show"] = all_shows_list[0]
+            if f"{prefix}_show" not in st.session_state or st.session_state[f"{prefix}_show"] not in current_shows:
+                st.session_state[f"{prefix}_show"] = current_shows[0]
                 on_show_change(prefix)
 
             p_show = st.selectbox(
                 "Format / Sendung", 
-                all_shows_list, 
+                current_shows, 
                 key=f"{prefix}_show",
                 on_change=on_show_change,
                 args=(prefix,)
@@ -514,14 +531,14 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             ft_show_key = f"ft_show_{prefix}"
             if ft_show_key not in st.session_state or st.session_state.get(f"ft_last_sel_{prefix}") != selected_label:
                 st.session_state[f"ft_last_sel_{prefix}"] = selected_label
-                st.session_state[ft_show_key] = current_item.get("Sendung", all_shows_list[0])
+                st.session_state[ft_show_key] = current_item.get("Sendung", current_shows[0])
                 st.session_state[f"ft_seas_{prefix}"] = int(current_item.get("Staffel", 1))
                 st.session_state[f"ft_ep_{prefix}"] = int(current_item.get("Ep.", 1))
                 st.session_state[f"ft_ad_{prefix}"] = int(current_item.get("Werbung", 6))
 
             col_ft1, col_ft2 = st.columns(2)
             with col_ft1:
-                new_show = st.selectbox("Sendung / Format", all_shows_list, key=ft_show_key, on_change=on_ft_show_change, args=(prefix,))
+                new_show = st.selectbox("Sendung / Format", current_shows, key=ft_show_key, on_change=on_ft_show_change, args=(prefix,))
                 col_st, col_ep = st.columns(2)
                 with col_st:
                     new_season = st.number_input("Staffel", min_value=1, max_value=3000, step=1, key=f"ft_seas_{prefix}")
@@ -615,15 +632,16 @@ with tab_builder:
     st.subheader("⚡ Übergeordneter Schnell-Planer (Mehrtägige Serienstrecken)")
     st.markdown("Plane Serienfolgen oder Wochentagsschienen (z. B. Mo–Fr Strips oder Wochenende) automatisiert über mehrere Tage hinweg ein.")
 
+    current_shows = get_all_shows_list()
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         b_day_selection = st.selectbox("Wochentag / Block", DAY_BLOCK_OPTIONS, key="global_b_day")
         
-        if "global_b_show" not in st.session_state:
-            st.session_state["global_b_show"] = all_shows_list[0]
+        if "global_b_show" not in st.session_state or st.session_state["global_b_show"] not in current_shows:
+            st.session_state["global_b_show"] = current_shows[0]
             on_show_change("global_b")
             
-        b_show = st.selectbox("Format / Sendung", all_shows_list, key="global_b_show", on_change=on_show_change, args=("global_b",))
+        b_show = st.selectbox("Format / Sendung", current_shows, key="global_b_show", on_change=on_show_change, args=("global_b",))
         
         if b_show in st.session_state.series_db:
             b_fmt_info = st.session_state.series_db[b_show]
@@ -735,7 +753,7 @@ with tab_builder:
         st.rerun()
 
 # ==============================================================================
-# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (V3.5 BUGFIX & TAG-VERSCHIEBUNG)
+# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG
 # ==============================================================================
 with tab_batch:
     st.subheader("🔍 Globaler Filter & Sammelbearbeitung (Batch-Editor)")
@@ -745,6 +763,7 @@ with tab_batch:
         st.info("Der Sendeplan ist leer. Bitte erstelle zuerst Einträge im Schnell-Planer oder in den Tagesmatrizen.")
     else:
         df_master = pd.DataFrame(st.session_state.schedule)
+        current_shows = get_all_shows_list()
         
         # 1. Filter-Kontrollleiste
         col_fl1, col_fl2, col_fl3, col_fl4 = st.columns([3, 2, 2, 2])
@@ -762,7 +781,6 @@ with tab_batch:
         with col_fl4:
             search_query = st.text_input("🔎 Textsuche (Ep, Status...):", placeholder="z. B. Wiederholung...", key="batch_search_text")
 
-        # Filtern mit Beibehaltung der Original-Indizes
         matching_indices = []
         for idx, item in enumerate(st.session_state.schedule):
             if batch_filter_show != "Alle" and item.get("Sendung") != batch_filter_show:
@@ -828,7 +846,7 @@ with tab_batch:
                 with col_act3:
                     st.markdown("**⏱️ Relativ schieben**")
                     shift_offset = st.number_input("Minuten (+/-):", step=15, value=0, key="batch_shift_offset")
-                    if st.button("Zeiten verschieben", key="btn_apply_shift"):
+                    if st.button("Verschieben", key="btn_apply_shift"):
                         if shift_offset != 0:
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
@@ -846,13 +864,13 @@ with tab_batch:
                             for g_idx in matching_indices:
                                 st.session_state.schedule[g_idx]["Status"] = new_batch_status
                             save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                            st.success(f"Status geändert!")
+                            st.success("Status geändert!")
                             st.rerun()
                     with col_b_del:
-                        if st.button("🗑️ Alle löschen", key="btn_delete_batch_items", type="secondary"):
+                        if st.button("🗑️ Löschen", key="btn_delete_batch_items", type="secondary"):
                             st.session_state.schedule = [item for i, item in enumerate(st.session_state.schedule) if i not in set(matching_indices)]
                             save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                            st.warning(f"{len(matching_indices)} Einträge wurden gelöscht!")
+                            st.warning(f"{len(matching_indices)} Einträge gelöscht!")
                             st.rerun()
 
             # 3. Detailansicht & Grid-Editor (Typ-gesichert)
@@ -866,6 +884,9 @@ with tab_batch:
                     df_filtered[col] = ""
             df_filtered = df_filtered[disp_columns]
 
+            existing_in_filter = df_filtered["Sendung"].dropna().unique().tolist()
+            valid_batch_options = sorted(list(set(current_shows + existing_in_filter)))
+
             edited_batch_df = st.data_editor(
                 df_filtered,
                 num_rows="fixed",
@@ -874,7 +895,7 @@ with tab_batch:
                 column_config={
                     "Wochentag": st.column_config.SelectboxColumn("Wochentag", options=WEEKDAYS, required=True),
                     "Uhrzeit": st.column_config.TextColumn("Uhrzeit (z. B. 20:15 - 20:45)", required=True),
-                    "Sendung": st.column_config.SelectboxColumn("Sendung", options=all_shows_list, required=True),
+                    "Sendung": st.column_config.SelectboxColumn("Sendung", options=valid_batch_options, required=True),
                     "Staffel": st.column_config.NumberColumn("Staffel", min_value=1, step=1),
                     "Ep.": st.column_config.NumberColumn("Ep.", min_value=1, step=1),
                     "Netto": st.column_config.NumberColumn("Netto", min_value=0, step=1),
@@ -902,8 +923,7 @@ with tab_batch:
                     
                     st.session_state.schedule[global_i]["Wochentag"] = str(row.get("Wochentag") or "Montag")
                     st.session_state.schedule[global_i]["Uhrzeit"] = str(row.get("Uhrzeit") or "20:15 - 20:45")
-                    st.session_state[f"ft_show_{global_i}"] = str(row.get("Sendung") or all_shows_list[0])
-                    st.session_state.schedule[global_i]["Sendung"] = str(row.get("Sendung") or all_shows_list[0])
+                    st.session_state.schedule[global_i]["Sendung"] = str(row.get("Sendung") or current_shows[0])
                     st.session_state.schedule[global_i]["Staffel"] = safe_int(row.get("Staffel"), 1)
                     st.session_state.schedule[global_i]["Ep."] = safe_int(row.get("Ep."), 1)
                     st.session_state.schedule[global_i]["Netto"] = net
@@ -1023,14 +1043,19 @@ with tab_week:
         st.info("Der Sendeplan ist aktuell leer.")
 
 # ==============================================================================
-# REITER 7: FORMAT-DATENBANK & VERWALTUNG (VOLL EDITIERBAR)
+# REITER 7: FORMAT-DATENBANK & VERWALTUNG (VOLL EDITIERBAR & LÖSCHBAR)
 # ==============================================================================
 with tab_db:
     st.subheader("📚 Format-Referenz & Stammdaten bearbeiten")
-    st.markdown("Hier kannst du bestehende Formate direkt bearbeiten (Netto- und Werbezeiten anpassen). Die Änderungen wirken sich nach dem Speichern sofort auf den gesamten Sendeplan aus!")
+    st.markdown("Hier kannst du Formate direkt bearbeiten (Netto- und Werbezeiten) oder komplett löschen. Die Änderungen synchronisieren sich sofort mit dem Sendeplan!")
 
+    # Bereinigung doppelter Formate vor Anzeige
     db_rows = []
+    seen_formats = set()
     for k, v in st.session_state.series_db.items():
+        if k in seen_formats:
+            continue
+        seen_formats.add(k)
         db_rows.append({
             "Format": k,
             "Genre": v.get("genre", "Allgemein"),
@@ -1076,6 +1101,7 @@ with tab_db:
         st.session_state.series_db = updated_db
         save_formats(updated_db)
         
+        # Laufzeiten im Sendeplan synchronisieren
         for item in st.session_state.schedule:
             sh = item.get("Sendung")
             if sh in updated_db:
@@ -1101,24 +1127,50 @@ with tab_db:
         st.rerun()
 
     st.markdown("---")
-    st.subheader("➕ Neues Format zur Datenbank hinzufügen")
-    with st.form("new_format_form"):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
+    
+    col_db1, col_db2 = st.columns(2)
+    
+    # Format hinzufügen
+    with col_db1:
+        st.subheader("➕ Neues Format anlegen")
+        with st.form("new_format_form"):
             new_show_name = st.text_input("Name der Sendung / Serie")
-            new_genre = st.text_input("Genre")
-        with col_f2:
-            new_net = st.number_input("Netto-Laufzeit (Min.)", value=30)
-            new_ad = st.number_input("Werbezeit (Min.)", value=6)
+            new_genre = st.text_input("Genre", value="Unterhaltungssendung")
+            new_net = st.number_input("Netto-Laufzeit (Min.)", value=30, min_value=1)
+            new_ad = st.number_input("Werbezeit (Min.)", value=6, min_value=0)
+                
+            if st.form_submit_button("Format speichern"):
+                if new_show_name.strip():
+                    st.session_state.series_db[new_show_name.strip()] = {
+                        "genre": new_genre or "Allgemein",
+                        "seasons": {1: 100},
+                        "net": int(new_net),
+                        "ad": int(new_ad)
+                    }
+                    save_formats(st.session_state.series_db)
+                    st.success(f"Format '{new_show_name}' erfolgreich registriert!")
+                    st.rerun()
+
+    # Format löschen & kaskadierend aus Sendeplan entfernen
+    with col_db2:
+        st.subheader("🗑️ Format löschen")
+        format_list_to_delete = sorted(list(st.session_state.series_db.keys()))
+        if format_list_to_delete:
+            format_to_remove = st.selectbox("Zu löschendes Format:", format_list_to_delete, key="sel_del_fmt")
+            purge_from_schedule = st.checkbox("Gleichzeitig alle Folgen dieser Sendung aus dem Sendeplan löschen", value=True)
             
-        if st.form_submit_button("Format speichern"):
-            if new_show_name.strip():
-                st.session_state.series_db[new_show_name] = {
-                    "genre": new_genre or "Allgemein",
-                    "seasons": {1: 20},
-                    "net": int(new_net),
-                    "ad": int(new_ad)
-                }
-                save_formats(st.session_state.series_db)
-                st.success(f"Format '{new_show_name}' erfolgreich registriert!")
+            if st.button(f"Format '{format_to_remove}' unwiderruflich löschen", type="secondary"):
+                if format_to_remove in st.session_state.series_db:
+                    del st.session_state.series_db[format_to_remove]
+                    save_formats(st.session_state.series_db)
+                    
+                if purge_from_schedule:
+                    st.session_state.schedule = [s for s in st.session_state.schedule if s.get("Sendung") != format_to_remove]
+                    save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
+                    st.warning(f"Format '{format_to_remove}' und alle Ausstrahlungen wurden entfernt.")
+                else:
+                    st.info(f"Format '{format_to_remove}' aus Datenbank entfernt (Sendeplätze wurden beibehalten).")
+                    
                 st.rerun()
+        else:
+            st.caption("Keine Formate zum Löschen vorhanden.")
