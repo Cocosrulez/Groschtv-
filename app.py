@@ -361,12 +361,22 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                 if "Werbung" not in row or row.get("Werbung") is None:
                     row["Werbung"] = int(fmt["ad"])
             
-            net = int(row.get("Netto", 0) or 0)
-            ad = int(row.get("Werbung", 0) or 0)
+            def safe_num(v, default=0):
+                try:
+                    if pd.isna(v) or v is None or v == "":
+                        return default
+                    return int(float(v))
+                except Exception:
+                    return default
+
+            net = safe_num(row.get("Netto"), 30)
+            ad = safe_num(row.get("Werbung"), 0)
             row["Gesamt"] = net + ad
-            row["Staffel"] = int(row.get("Staffel", 1) or 1)
-            row["Ep."] = int(row.get("Ep.", 1) or 1)
-            row["Status"] = row.get("Status", "Erstausstrahlung")
+            row["Netto"] = net
+            row["Werbung"] = ad
+            row["Staffel"] = safe_num(row.get("Staffel"), 1)
+            row["Ep."] = safe_num(row.get("Ep."), 1)
+            row["Status"] = str(row.get("Status") or "Erstausstrahlung")
             
         st.session_state.schedule = remaining_slots + new_slots
         save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
@@ -587,7 +597,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
                         st.success(f"'{row['Sendung']}' entfernt und Episode freigegeben!")
                         st.rerun()
 
-# --- HAUPTREITER (INKLUSIVE V3.5 GLOBALER FILTER) ---
+# --- HAUPTREITER ---
 tab_builder, tab_batch, tab_prime, tab_day, tab_night, tab_week, tab_db = st.tabs([
     "⚡ Schnell-Planer (Serien & Blöcke)",
     "🔍 Globaler Filter & Sammelbearbeitung",
@@ -725,11 +735,11 @@ with tab_builder:
         st.rerun()
 
 # ==============================================================================
-# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (NEU IN V3.5)
+# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (V3.5 BUGFIX & TAG-VERSCHIEBUNG)
 # ==============================================================================
 with tab_batch:
     st.subheader("🔍 Globaler Filter & Sammelbearbeitung (Batch-Editor)")
-    st.markdown("Finde alle Vorkommen einer Sendung über die gesamte Woche hinweg, verschiebe Sendezeiten im Block oder passe Attribute gesammelt an.")
+    st.markdown("Finde alle Vorkommen einer Sendung über die gesamte Woche hinweg, verschiebe Wochentage, ändere Sendezeiten im Block oder passe Attribute gesammelt an.")
 
     if not st.session_state.schedule:
         st.info("Der Sendeplan ist leer. Bitte erstelle zuerst Einträge im Schnell-Planer oder in den Tagesmatrizen.")
@@ -755,13 +765,10 @@ with tab_batch:
         # Filtern mit Beibehaltung der Original-Indizes
         matching_indices = []
         for idx, item in enumerate(st.session_state.schedule):
-            # Format Filter
             if batch_filter_show != "Alle" and item.get("Sendung") != batch_filter_show:
                 continue
-            # Tage Filter
             if batch_filter_days and item.get("Wochentag") not in batch_filter_days:
                 continue
-            # Zeitschiene Filter
             slot_cat = get_slot_category(item.get("Uhrzeit", ""))
             if batch_filter_category == "Primetime (20-02)" and slot_cat != "prime":
                 continue
@@ -769,9 +776,8 @@ with tab_batch:
                 continue
             elif batch_filter_category == "Nacht (02-06)" and slot_cat != "night":
                 continue
-            # Freitext Filter
             if search_query:
-                row_str = f"{item.get('Sendung', '')} {item.get('Status', '')} St.{item.get('Staffel', '')} Ep.{item.get('Ep.', '')}".lower()
+                row_str = f"{item.get('Sendung', '')} {item.get('Status', '')} {item.get('Wochentag', '')} St.{item.get('Staffel', '')} Ep.{item.get('Ep.', '')}".lower()
                 if search_query.lower() not in row_str:
                     continue
             matching_indices.append(idx)
@@ -781,18 +787,28 @@ with tab_batch:
         if matching_indices:
             # 2. Batch-Aktionsleiste
             with st.expander("⚡ Sammelaktionen auf alle gefilterten Ausstrahlungen anwenden", expanded=True):
-                col_act1, col_act2, col_act3 = st.columns(3)
+                col_act1, col_act2, col_act3, col_act4 = st.columns(4)
 
                 with col_act1:
-                    st.markdown("**🕒 Sendezeit gesammelt neu setzen**")
-                    new_batch_time = st.time_input("Neue feste Startzeit:", value=time(20, 15), key="batch_new_start_time")
-                    chain_episodes = st.checkbox("Folgen nahtlos hintereinanderreihen", value=True, key="batch_chain_mode")
-                    if st.button("Startzeit(en) anwenden", key="btn_apply_batch_time", type="primary"):
+                    st.markdown("**📅 Wochentag verschieben**")
+                    new_batch_day = st.selectbox("Auf Wochentag legen:", WEEKDAYS, key="batch_target_day")
+                    if st.button("Tag für alle übernehmen", key="btn_apply_batch_day", type="primary"):
+                        for g_idx in matching_indices:
+                            st.session_state.schedule[g_idx]["Wochentag"] = new_batch_day
+                        save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
+                        st.success(f"Alle gefilterten Folgen auf {new_batch_day} verschoben!")
+                        st.rerun()
+
+                with col_act2:
+                    st.markdown("**🕒 Sendezeit neu setzen**")
+                    new_batch_time = st.time_input("Feste Startzeit:", value=time(20, 15), key="batch_new_start_time")
+                    chain_episodes = st.checkbox("Nahtlos verketten", value=True, key="batch_chain_mode")
+                    if st.button("Startzeit(en) anwenden", key="btn_apply_batch_time"):
                         if chain_episodes:
                             curr_dt = datetime.combine(datetime.today(), new_batch_time)
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
-                                total_l = int(item.get("Gesamt", 30))
+                                total_l = int(item.get("Gesamt", 30) or 30)
                                 s_str = curr_dt.strftime("%H:%M")
                                 curr_dt += timedelta(minutes=total_l)
                                 e_str = curr_dt.strftime("%H:%M")
@@ -800,37 +816,37 @@ with tab_batch:
                         else:
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
-                                total_l = int(item.get("Gesamt", 30))
+                                total_l = int(item.get("Gesamt", 30) or 30)
                                 start_dt = datetime.combine(datetime.today(), new_batch_time)
                                 end_dt = start_dt + timedelta(minutes=total_l)
                                 item["Uhrzeit"] = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
                                 
                         save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                        st.success("Startzeiten der gefilterten Folgen aktualisiert!")
+                        st.success("Startzeiten aktualisiert!")
                         st.rerun()
 
-                with col_act2:
-                    st.markdown("**⏱️ Zeiten relativ verschieben**")
-                    shift_offset = st.number_input("Verschieben um (Minuten +/-):", step=15, value=0, key="batch_shift_offset")
+                with col_act3:
+                    st.markdown("**⏱️ Relativ schieben**")
+                    shift_offset = st.number_input("Minuten (+/-):", step=15, value=0, key="batch_shift_offset")
                     if st.button("Zeiten verschieben", key="btn_apply_shift"):
                         if shift_offset != 0:
                             for g_idx in matching_indices:
                                 item = st.session_state.schedule[g_idx]
                                 item["Uhrzeit"] = shift_time_slot(item["Uhrzeit"], shift_offset)
                             save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                            st.success(f"Alle Sendezeiten um {shift_offset} Minuten verschoben!")
+                            st.success(f"Um {shift_offset} Min. verschoben!")
                             st.rerun()
 
-                with col_act3:
+                with col_act4:
                     st.markdown("**🏷️ Status / Bereinigung**")
-                    new_batch_status = st.selectbox("Neuer Status für alle:", STATUS_OPTIONS, key="batch_status_select")
+                    new_batch_status = st.selectbox("Status:", STATUS_OPTIONS, key="batch_status_select")
                     col_b_stat, col_b_del = st.columns(2)
                     with col_b_stat:
-                        if st.button("Status ändern", key="btn_apply_batch_status"):
+                        if st.button("Setzen", key="btn_apply_batch_status"):
                             for g_idx in matching_indices:
                                 st.session_state.schedule[g_idx]["Status"] = new_batch_status
                             save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
-                            st.success(f"Status auf '{new_batch_status}' geändert!")
+                            st.success(f"Status geändert!")
                             st.rerun()
                     with col_b_del:
                         if st.button("🗑️ Alle löschen", key="btn_delete_batch_items", type="secondary"):
@@ -839,13 +855,16 @@ with tab_batch:
                             st.warning(f"{len(matching_indices)} Einträge wurden gelöscht!")
                             st.rerun()
 
-            # 3. Interaktive Tabellenansicht mit direkter Editierbarkeit
+            # 3. Detailansicht & Grid-Editor (Typ-gesichert)
             st.markdown("#### Detailansicht & Schnell-Korrektur")
             filtered_data = [st.session_state.schedule[i] for i in matching_indices]
             df_filtered = pd.DataFrame(filtered_data)
             
             disp_columns = ["Wochentag", "Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
-            df_filtered = df_filtered[[c for c in disp_columns if c in df_filtered.columns]]
+            for col in disp_columns:
+                if col not in df_filtered.columns:
+                    df_filtered[col] = ""
+            df_filtered = df_filtered[disp_columns]
 
             edited_batch_df = st.data_editor(
                 df_filtered,
@@ -868,12 +887,29 @@ with tab_batch:
             if st.button("💾 Änderungen aus der Tabelle speichern", key="btn_save_batch_grid", type="primary"):
                 updated_batch_records = edited_batch_df.to_dict(orient="records")
                 for local_i, global_i in enumerate(matching_indices):
-                    updated_row = updated_batch_records[local_i]
-                    # Laufzeiten neu berechnen
-                    n = int(updated_row.get("Netto", 0) or 0)
-                    a = int(updated_row.get("Werbung", 0) or 0)
-                    updated_row["Gesamt"] = n + a
-                    st.session_state.schedule[global_i] = updated_row
+                    row = updated_batch_records[local_i]
+                    
+                    def safe_int(val, default=0):
+                        try:
+                            if pd.isna(val) or val is None or val == "":
+                                return default
+                            return int(float(val))
+                        except Exception:
+                            return default
+
+                    net = safe_int(row.get("Netto"), 30)
+                    ad = safe_int(row.get("Werbung"), 0)
+                    
+                    st.session_state.schedule[global_i]["Wochentag"] = str(row.get("Wochentag") or "Montag")
+                    st.session_state.schedule[global_i]["Uhrzeit"] = str(row.get("Uhrzeit") or "20:15 - 20:45")
+                    st.session_state[f"ft_show_{global_i}"] = str(row.get("Sendung") or all_shows_list[0])
+                    st.session_state.schedule[global_i]["Sendung"] = str(row.get("Sendung") or all_shows_list[0])
+                    st.session_state.schedule[global_i]["Staffel"] = safe_int(row.get("Staffel"), 1)
+                    st.session_state.schedule[global_i]["Ep."] = safe_int(row.get("Ep."), 1)
+                    st.session_state.schedule[global_i]["Netto"] = net
+                    st.session_state.schedule[global_i]["Werbung"] = ad
+                    st.session_state.schedule[global_i]["Gesamt"] = net + ad
+                    st.session_state.schedule[global_i]["Status"] = str(row.get("Status") or "Erstausstrahlung")
 
                 save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
                 st.success("Tabelle synchronisiert und im Master-Sendeplan gesichert!")
