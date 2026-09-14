@@ -9,7 +9,7 @@ SAVE_FILE = "sendeplan_master.json"
 FORMATS_FILE = "formats_master.json"
 
 st.set_page_config(
-    page_title="Master Control v3.2 | Broadcast Direktion",
+    page_title="Master Control v3.3 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
@@ -172,9 +172,9 @@ STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 def load_formats():
   fallback_files = [
       FORMATS_FILE,
+      "formats_v3.3.json",
       "formats_v3.2.json",
       "formats_v3.1.json",
-      "formats_v5.3.json",
   ]
   for fpath in fallback_files:
     if os.path.exists(fpath):
@@ -202,10 +202,9 @@ if "series_db" not in st.session_state:
 def load_data():
   fallback_files = [
       SAVE_FILE,
+      "sendeplan_v3.3.json",
       "sendeplan_v3.2.json",
       "sendeplan_v3.1.json",
-      "sendeplan_v5.3.json",
-      "sendeplan_v5.2.json",
   ]
   target_file = None
   for fpath in fallback_files:
@@ -423,7 +422,6 @@ def on_season_change(prefix):
 
 
 def on_ft_show_change(prefix):
-  """Callback, wenn im Feintuner eine andere Sendung ausgewählt wird."""
   ft_show_key = f"ft_show_{prefix}"
   selected_show = st.session_state.get(ft_show_key)
   fmt = st.session_state.series_db.get(selected_show)
@@ -442,7 +440,7 @@ all_shows_list = list(st.session_state.series_db.keys()) + list(
 )
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v3.2: Programmschema-Direktion")
+st.title("📡 Master Control v3.3: Programmschema-Direktion")
 st.markdown(
     "**Broadcast Direktion Core** — Vollreaktiver Serien-Sync, Staffelprüfung,"
     " In-Place Tagesmatrizen & Mehr-Tage-Schnellplaner."
@@ -464,7 +462,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Episoden-Engine</div>
-            <div class="metric-value">v3.2 Reactive State</div>
+            <div class="metric-value">v3.3 Reactive State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -739,7 +737,7 @@ def render_day_matrix_editor(day_name, category, key_prefix):
               "Uhrzeit": f"{s_str} - {e_str}",
               "Sendung": p_show,
               "Staffel": p_season,
-              "Ep.": curr_ep_counter if not b_is_filler else 1,
+              "Ep.": curr_ep_counter if not is_filler else 1,
               "Netto": p_net,
               "Werbung": p_ad,
               "Gesamt": p_total,
@@ -788,7 +786,6 @@ def render_day_matrix_editor(day_name, category, key_prefix):
             global_idx = g_i
             break
 
-      # Initialisiere Session State für den Feintuner, falls neu gewählt oder geladen
       ft_show_key = f"ft_show_{prefix}"
       if (
           ft_show_key not in st.session_state
@@ -1322,21 +1319,99 @@ with tab_week:
     st.info("Der Sendeplan ist aktuell leer.")
 
 # ==============================================================================
-# REITER 6: FORMAT-DATENBANK & VERWALTUNG
+# REITER 6: FORMAT-DATENBANK & VERWALTUNG (VOLL EDITIERBAR)
 # ==============================================================================
 with tab_db:
-  st.subheader("📚 Format-Referenz & Stammdaten")
-  db_rows = [
-      {
-          "Format": k,
-          "Genre": v["genre"],
-          "Netto (Min.)": v["net"],
-          "Werbung (Min.)": v["ad"],
-          "Gesamt (Min.)": v["net"] + v["ad"],
+  st.subheader("📚 Format-Referenz & Stammdaten bearbeiten")
+  st.markdown(
+      "Hier kannst du bestehende Formate direkt bearbeiten (Netto- und"
+      " Werbezeiten anpassen). Die Änderungen wirken sich nach dem Speichern"
+      " sofort auf den gesamten Sendeplan aus!"
+  )
+
+  db_rows = []
+  for k, v in st.session_state.series_db.items():
+    db_rows.append({
+        "Format": k,
+        "Genre": v.get("genre", "Allgemein"),
+        "Netto (Min.)": int(v.get("net", 30)),
+        "Werbung (Min.)": int(v.get("ad", 6)),
+        "Gesamt (Min.)": int(v.get("net", 30)) + int(v.get("ad", 6)),
+    })
+
+  df_db = pd.DataFrame(db_rows)
+
+  edited_db_df = st.data_editor(
+      df_db,
+      num_rows="fixed",
+      use_container_width=True,
+      key="format_editor_table",
+      column_config={
+          "Format": st.column_config.TextColumn("Format", disabled=True),
+          "Genre": st.column_config.TextColumn("Genre"),
+          "Netto (Min.)": st.column_config.NumberColumn(
+              "Netto (Min.)", min_value=1, step=1
+          ),
+          "Werbung (Min.)": st.column_config.NumberColumn(
+              "Werbung (Min.)", min_value=0, step=1
+          ),
+          "Gesamt (Min.)": st.column_config.NumberColumn(
+              "Gesamt (Min.)", disabled=True
+          ),
+      },
+  )
+
+  if st.button("💾 Format-Änderungen & Sendeplan synchronisieren", type="primary"):
+    updated_db = {}
+    for _, row in edited_db_df.iterrows():
+      fmt_name = row["Format"]
+      new_net = int(row["Netto (Min.)"])
+      new_ad = int(row["Werbung (Min.)"])
+      new_genre = row["Genre"]
+
+      # Bestehende Staffeln beibehalten
+      old_format_data = st.session_state.series_db.get(fmt_name, {})
+      seasons_data = old_format_data.get("seasons", {1: 20})
+
+      updated_db[fmt_name] = {
+          "genre": new_genre,
+          "seasons": seasons_data,
+          "net": new_net,
+          "ad": new_ad,
       }
-      for k, v in st.session_state.series_db.items()
-  ]
-  st.table(pd.DataFrame(db_rows))
+
+    st.session_state.series_db = updated_db
+    save_formats(updated_db)
+
+    # Automatische Synchronisation des Sendeplans
+    for item in st.session_state.schedule:
+      sh = item.get("Sendung")
+      if sh in updated_db:
+        f_net = updated_db[sh]["net"]
+        f_ad = updated_db[sh]["ad"]
+        f_total = f_net + f_ad
+
+        item["Netto"] = f_net
+        item["Werbung"] = f_ad
+        item["Gesamt"] = f_total
+
+        # Uhrzeiten-String anhand der neuen Gesamtlänge anpassen
+        try:
+          start_str = item["Uhrzeit"].split(" - ")[0]
+          h, m = map(int, start_str.split(":"))
+          start_dt = datetime.combine(datetime.today(), time(h, m))
+          end_dt = start_dt + timedelta(minutes=f_total)
+          item["Uhrzeit"] = (
+              f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+          )
+        except Exception:
+          pass
+
+    save_data(st.session_state.schedule, st.session_state.acknowledged_warnings)
+    st.success(
+        "Formate erfolgreich aktualisiert und der Sendeplan wurde synchronisiert!"
+    )
+    st.rerun()
 
   st.markdown("---")
   st.subheader("➕ Neues Format zur Datenbank hinzufügen")
