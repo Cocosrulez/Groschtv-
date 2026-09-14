@@ -9,7 +9,7 @@ SAVE_FILE = "sendeplan_master.json"
 FORMATS_FILE = "formats_master.json"
 
 st.set_page_config(
-    page_title="Master Control v3.3 | Broadcast Direktion",
+    page_title="Master Control v3.4 | Broadcast Direktion",
     page_icon="📡",
     layout="wide",
 )
@@ -222,22 +222,32 @@ DAY_BLOCK_OPTIONS = (
 STATUS_OPTIONS = ["Erstausstrahlung", "Wiederholung", "Live"]
 
 
-# --- FORMATE LADEN & SPEICHERN ---
+# --- FORMATE LADEN & SPEICHERN (MIT AUTOMATISCHEM MERGE) ---
 def load_formats():
+  db = DEFAULT_SERIES_DATABASE.copy()
   fallback_files = [
       FORMATS_FILE,
+      "formats_v3.4.json",
       "formats_v3.3.json",
       "formats_v3.2.json",
       "formats_v3.1.json",
   ]
+  target_file = None
   for fpath in fallback_files:
     if os.path.exists(fpath):
-      try:
-        with open(fpath, "r", encoding="utf-8") as f:
-          return json.load(f)
-      except Exception:
-        pass
-  return DEFAULT_SERIES_DATABASE
+      target_file = fpath
+      break
+
+  if target_file:
+    try:
+      with open(target_file, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+        if isinstance(loaded, dict):
+          for k, v in loaded.items():
+            db[k] = v
+    except Exception:
+      pass
+  return db
 
 
 def save_formats(db):
@@ -256,9 +266,9 @@ if "series_db" not in st.session_state:
 def load_data():
   fallback_files = [
       SAVE_FILE,
+      "sendeplan_v3.4.json",
       "sendeplan_v3.3.json",
       "sendeplan_v3.2.json",
-      "sendeplan_v3.1.json",
   ]
   target_file = None
   for fpath in fallback_files:
@@ -494,7 +504,7 @@ all_shows_list = list(st.session_state.series_db.keys()) + list(
 )
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v3.3: Programmschema-Direktion")
+st.title("📡 Master Control v3.4: Programmschema-Direktion")
 st.markdown(
     "**Broadcast Direktion Core** — Vollreaktiver Serien-Sync, Staffelprüfung,"
     " In-Place Tagesmatrizen & Mehr-Tage-Schnellplaner."
@@ -516,7 +526,7 @@ st.markdown(
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Episoden-Engine</div>
-            <div class="metric-value">v3.3 Reactive State</div>
+            <div class="metric-value">v3.4 Reactive State</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
