@@ -9,7 +9,7 @@ SAVE_FILE = "sendeplan_master.json"
 FORMATS_FILE = "formats_master.json"
 
 st.set_page_config(
-    page_title="Master Control v3.5 | Broadcast Direktion",
+    page_title="Master Control v3.6 | Broadcast Direktion",
     page_icon="📡",
     layout="wide"
 )
@@ -265,7 +265,6 @@ def parse_time_range(time_str):
         s, e = time_str.split(" - ")
         sh, sm = map(int, s.split(":"))
         eh, em = map(int, e.split(":"))
-        # TV-Sendetag Basis: 06:00 Uhr Morgens bis Folgetag 06:00
         s_mins = (sh if sh >= 6 else sh + 24) * 60 + sm
         e_mins = (eh if eh >= 6 else eh + 24) * 60 + em
         if e_mins < s_mins:
@@ -307,7 +306,7 @@ def on_ft_show_change(prefix):
         st.session_state[f"ft_ad_{prefix}"] = fmt["ad"]
 
 # --- HEADER & METRIKEN ---
-st.title("📡 Master Control v3.5: Programmschema-Direktion")
+st.title("📡 Master Control v3.6: Programmschema-Direktion")
 st.markdown("**Broadcast Direktion Core** — Globaler Filter & Batch-Editor, reaktiver Serien-Sync, Staffelprüfung & Mehr-Tage-Schnellplaner.")
 
 total_items = len(st.session_state.schedule)
@@ -325,7 +324,7 @@ st.markdown(f"""
         </div>
         <div class="metric-card" style="border-left-color: #8b5cf6;">
             <div class="metric-label">Episoden-Engine</div>
-            <div class="metric-value">v3.5 Dynamic Grid</div>
+            <div class="metric-value">v3.6 Dynamic Grid</div>
         </div>
         <div class="metric-card" style="border-left-color: #f59e0b;">
             <div class="metric-label">Verfügbare Formate</div>
@@ -770,7 +769,7 @@ with tab_builder:
         st.rerun()
 
 # ==============================================================================
-# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (V3.5 BATCH-EDITOR)
+# REITER 2: GLOBALER FILTER & SAMMELBEARBEITUNG (V3.6 BATCH-EDITOR)
 # ==============================================================================
 with tab_batch:
     st.subheader("🔍 Globaler Filter & Sammelbearbeitung (Batch-Editor)")
@@ -782,7 +781,6 @@ with tab_batch:
         df_master = pd.DataFrame(st.session_state.schedule)
         current_shows = get_all_shows_list()
         
-        # 1. Filter-Kontrollleiste
         col_fl1, col_fl2, col_fl3, col_fl4 = st.columns([3, 2, 2, 2])
         
         with col_fl1:
@@ -820,7 +818,6 @@ with tab_batch:
         st.markdown(f"**Gefundene Ausstrahlungen:** `{len(matching_indices)}`")
 
         if matching_indices:
-            # 2. Batch-Aktionsleiste
             with st.expander("⚡ Sammelaktionen auf alle gefilterten Ausstrahlungen anwenden", expanded=True):
                 col_act1, col_act2, col_act3, col_act4 = st.columns(4)
 
@@ -906,7 +903,6 @@ with tab_batch:
                         st.success("Episoden lückenlos neu durchnummeriert!")
                         st.rerun()
 
-            # 3. Detailansicht & Grid-Editor (Typ-gesichert)
             st.markdown("#### Detailansicht & Schnell-Korrektur")
             filtered_data = [st.session_state.schedule[i] for i in matching_indices]
             df_filtered = pd.DataFrame(filtered_data)
@@ -1016,18 +1012,15 @@ with tab_week:
         disp_cols = ["Wochentag", "Uhrzeit", "Sendung", "Staffel", "Ep.", "Netto", "Werbung", "Gesamt", "Status"]
         st.dataframe(df_all[[c for c in disp_cols if c in df_all.columns]], use_container_width=True, hide_index=True)
         
-        # Prüfung: Formate, Kollisionen & Sendelücken
         errors_found = []
         warnings_found = []
         
-        # 1. Format-Validierung
         for idx, row in enumerate(st.session_state.schedule):
             sh = row.get("Sendung")
             fmt = st.session_state.series_db.get(sh) or FILLER_DATABASE.get(sh)
             if not fmt:
                 errors_found.append(f"Sendeplatz #{idx+1} ({row.get('Wochentag')}): Unbekanntes Format '{sh}'.")
 
-        # 2. Timeline-Check (Kollisionen & Lücken)
         for day in WEEKDAYS:
             day_slots = [x for x in st.session_state.schedule if x.get("Wochentag") == day]
             parsed_slots = []
@@ -1103,7 +1096,6 @@ with tab_db:
     st.subheader("📚 Format-Referenz & Stammdaten bearbeiten")
     st.markdown("Hier kannst du Formate direkt bearbeiten (Netto- und Werbezeiten) oder komplett löschen. Die Änderungen synchronisieren sich sofort mit dem Sendeplan!")
 
-    # Bereinigung doppelter Formate vor Anzeige
     db_rows = []
     seen_formats = set()
     for k, v in st.session_state.series_db.items():
@@ -1155,7 +1147,6 @@ with tab_db:
         st.session_state.series_db = updated_db
         save_formats(updated_db)
         
-        # Laufzeiten im Sendeplan synchronisieren
         for item in st.session_state.schedule:
             sh = item.get("Sendung")
             if sh in updated_db:
@@ -1184,7 +1175,6 @@ with tab_db:
     
     col_db1, col_db2 = st.columns(2)
     
-    # Format hinzufügen
     with col_db1:
         st.subheader("➕ Neues Format anlegen")
         with st.form("new_format_form"):
@@ -1205,7 +1195,6 @@ with tab_db:
                     st.success(f"Format '{new_show_name}' erfolgreich registriert!")
                     st.rerun()
 
-    # Format löschen & kaskadierend aus Sendeplan entfernen
     with col_db2:
         st.subheader("🗑️ Format löschen")
         format_list_to_delete = sorted(list(st.session_state.series_db.keys()))
